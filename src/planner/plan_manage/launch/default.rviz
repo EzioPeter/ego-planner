@@ -132,6 +132,23 @@ Visualization Manager:
             topo_paths: true
           Queue Size: 100
           Value: true
+        - Class: rviz/MarkerArray
+          Enabled: true
+          Marker Topic: /mppi_trajectories
+          Name: MPPI_Sample_Trajectories
+          Namespaces:
+            mppi_sample_trajectories: true
+          Queue Size: 100
+          Value: true
+        - Class: rviz/MarkerArray
+          Enabled: true
+          Marker Topic: /mppi_optimal_trajectory
+          Name: MPPI_Optimal_Trajectory
+          Namespaces:
+            mppi_optimal_trajectory: true
+            mppi_velocity_arrows: true
+          Queue Size: 100
+          Value: true
       Enabled: true
       Name: Planning
     - Class: rviz/Group

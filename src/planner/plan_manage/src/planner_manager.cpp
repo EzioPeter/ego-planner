@@ -42,7 +42,7 @@ namespace ego_planner
     topo_planner_->setMaxSampleNum(1000);
 
     mppi_planner_.reset(new MPPIPlanner);
-    mppi_planner_->init(grid_map_);
+    mppi_planner_->init(nh, grid_map_);
     mppi_planner_->setNumSamples(500);
     mppi_planner_->setHorizonSteps(20);
     mppi_planner_->setTimeStep(0.1);

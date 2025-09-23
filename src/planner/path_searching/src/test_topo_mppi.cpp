@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
     // Test MPPI
     MPPIPlanner::Ptr mppi_planner;
     mppi_planner.reset(new MPPIPlanner);
-    mppi_planner->init(grid_map);
+    mppi_planner->init(nh, grid_map);
     
     Eigen::Vector3d start_vel(0, 0, 0);
     Eigen::Vector3d goal_vel(0, 0, 0);

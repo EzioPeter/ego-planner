@@ -19,10 +19,20 @@ MPPIPlanner::MPPIPlanner()
 MPPIPlanner::~MPPIPlanner() {
 }
 
-void MPPIPlanner::init(GridMap::Ptr grid_map) {
+void MPPIPlanner::init(ros::NodeHandle& nh, GridMap::Ptr grid_map) {
     grid_map_ = grid_map;
+    
+    // Initialize visualization publishers
+    mppi_trajectories_pub_ = nh.advertise<visualization_msgs::MarkerArray>("/mppi_trajectories", 10);
+    optimal_trajectory_pub_ = nh.advertise<visualization_msgs::MarkerArray>("/mppi_optimal_trajectory", 10);
+    
+    // Get frame_id from node parameter, default to "world" if not set
+    nh.param("grid_map/frame_id", frame_id_, std::string("world"));
+    
     ROS_INFO("[MPPI] Initialized with %d samples, horizon %d steps, dt %.3f", 
              num_samples_, horizon_steps_, dt_);
+    ROS_INFO("[MPPI] Initialized publishers on topics '/mppi_trajectories' and '/mppi_optimal_trajectory'");
+    ROS_INFO("[MPPI] Using frame_id: %s", frame_id_.c_str());
 }
 
 bool MPPIPlanner::planTrajectory(const Vector3d& start_pos,
@@ -73,6 +83,10 @@ bool MPPIPlanner::planTrajectory(const Vector3d& start_pos,
     
     // Compute weighted average trajectory
     optimal_trajectory = weightedAverage(trajectories);
+    
+    // Visualize trajectories
+    visualizeTrajectories(trajectories);
+    visualizeOptimalTrajectory(optimal_trajectory);
     
     ROS_DEBUG("[MPPI] Generated optimal trajectory with cost: %f", optimal_trajectory.cost);
     return true;
@@ -271,6 +285,146 @@ MPPITrajectory MPPIPlanner::weightedAverage(const vector<MPPITrajectory>& trajec
     avg_trajectory.cost = total_cost;
     
     return avg_trajectory;
+}
+
+void MPPIPlanner::visualizeTrajectories(const vector<MPPITrajectory>& trajectories) {
+    if (trajectories.empty()) return;
+    
+    ROS_DEBUG("[MPPI] Visualizing %zu sample trajectories with frame_id: %s", trajectories.size(), frame_id_.c_str());
+    
+    visualization_msgs::MarkerArray marker_array;
+    
+    // Clear previous markers
+    visualization_msgs::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id_;
+    clear_marker.header.stamp = ros::Time::now();
+    clear_marker.action = visualization_msgs::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+    
+    // Visualize a subset of sample trajectories (to avoid overwhelming RViz)
+    int visualization_step = std::max(1, (int)(trajectories.size() / 50));  // Show at most 50 trajectories
+    
+    for (size_t i = 0; i < trajectories.size(); i += visualization_step) {
+        if (trajectories[i].positions.empty()) continue;
+        
+        visualization_msgs::Marker line_marker;
+        line_marker.header.frame_id = frame_id_;
+        line_marker.header.stamp = ros::Time::now();
+        line_marker.ns = "mppi_sample_trajectories";
+        line_marker.id = i;
+        line_marker.type = visualization_msgs::Marker::LINE_STRIP;
+        line_marker.action = visualization_msgs::Marker::ADD;
+        line_marker.pose.orientation.w = 1.0;
+        
+        // Color based on trajectory cost (red = high cost, green = low cost)
+        double normalized_cost = trajectories[i].weight; // Use weight for coloring
+        line_marker.color.r = 1.0 - normalized_cost;
+        line_marker.color.g = normalized_cost;
+        line_marker.color.b = 0.2;
+        line_marker.color.a = 0.3;  // Make them semi-transparent
+        line_marker.scale.x = 0.05;  // Thin lines for sample trajectories
+        
+        for (const auto& pos : trajectories[i].positions) {
+            geometry_msgs::Point p;
+            p.x = pos.x();
+            p.y = pos.y();
+            p.z = pos.z();
+            line_marker.points.push_back(p);
+        }
+        
+        marker_array.markers.push_back(line_marker);
+    }
+    
+    mppi_trajectories_pub_.publish(marker_array);
+    ROS_DEBUG("[MPPI] Published %zu sample trajectory markers", marker_array.markers.size() - 1);
+}
+
+void MPPIPlanner::visualizeOptimalTrajectory(const MPPITrajectory& trajectory) {
+    if (trajectory.positions.empty()) return;
+    
+    ROS_DEBUG("[MPPI] Visualizing optimal trajectory with frame_id: %s", frame_id_.c_str());
+    
+    visualization_msgs::MarkerArray marker_array;
+    
+    // Clear previous markers
+    visualization_msgs::Marker clear_marker;
+    clear_marker.header.frame_id = frame_id_;
+    clear_marker.header.stamp = ros::Time::now();
+    clear_marker.action = visualization_msgs::Marker::DELETEALL;
+    marker_array.markers.push_back(clear_marker);
+    
+    // Optimal trajectory line
+    visualization_msgs::Marker line_marker;
+    line_marker.header.frame_id = frame_id_;
+    line_marker.header.stamp = ros::Time::now();
+    line_marker.ns = "mppi_optimal_trajectory";
+    line_marker.id = 0;
+    line_marker.type = visualization_msgs::Marker::LINE_STRIP;
+    line_marker.action = visualization_msgs::Marker::ADD;
+    line_marker.pose.orientation.w = 1.0;
+    
+    // Bright orange for optimal trajectory
+    line_marker.color.r = 1.0;
+    line_marker.color.g = 0.5;
+    line_marker.color.b = 0.0;
+    line_marker.color.a = 1.0;
+    line_marker.scale.x = 0.15;  // Thicker line for optimal trajectory
+    
+    for (const auto& pos : trajectory.positions) {
+        geometry_msgs::Point p;
+        p.x = pos.x();
+        p.y = pos.y();
+        p.z = pos.z();
+        line_marker.points.push_back(p);
+    }
+    
+    marker_array.markers.push_back(line_marker);
+    
+    // Add velocity vectors as arrows (optional, show every few steps)
+    int arrow_step = std::max(1, horizon_steps_ / 5);  // Show 5 arrows max
+    for (int i = 0; i < trajectory.size(); i += arrow_step) {
+        if (trajectory.velocities[i].norm() < 0.1) continue;  // Skip very small velocities
+        
+        visualization_msgs::Marker arrow_marker;
+        arrow_marker.header.frame_id = frame_id_;
+        arrow_marker.header.stamp = ros::Time::now();
+        arrow_marker.ns = "mppi_velocity_arrows";
+        arrow_marker.id = i;
+        arrow_marker.type = visualization_msgs::Marker::ARROW;
+        arrow_marker.action = visualization_msgs::Marker::ADD;
+        
+        // Arrow position
+        arrow_marker.pose.position.x = trajectory.positions[i].x();
+        arrow_marker.pose.position.y = trajectory.positions[i].y();
+        arrow_marker.pose.position.z = trajectory.positions[i].z();
+        
+        // Arrow orientation (pointing in velocity direction)
+        Vector3d vel_normalized = trajectory.velocities[i].normalized();
+        double yaw = atan2(vel_normalized.y(), vel_normalized.x());
+        double pitch = asin(vel_normalized.z());
+        
+        arrow_marker.pose.orientation.x = 0;
+        arrow_marker.pose.orientation.y = sin(pitch/2);
+        arrow_marker.pose.orientation.z = sin(yaw/2) * cos(pitch/2);
+        arrow_marker.pose.orientation.w = cos(yaw/2) * cos(pitch/2);
+        
+        // Arrow scale based on velocity magnitude
+        double vel_mag = trajectory.velocities[i].norm();
+        arrow_marker.scale.x = vel_mag * 0.5;  // Arrow length
+        arrow_marker.scale.y = 0.05;  // Arrow width
+        arrow_marker.scale.z = 0.05;  // Arrow height
+        
+        // Blue color for velocity arrows
+        arrow_marker.color.r = 0.0;
+        arrow_marker.color.g = 0.3;
+        arrow_marker.color.b = 1.0;
+        arrow_marker.color.a = 0.7;
+        
+        marker_array.markers.push_back(arrow_marker);
+    }
+    
+    optimal_trajectory_pub_.publish(marker_array);
+    ROS_DEBUG("[MPPI] Published optimal trajectory with %zu markers", marker_array.markers.size() - 1);
 }
 
 } // namespace ego_planner

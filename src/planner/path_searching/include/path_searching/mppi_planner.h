@@ -8,6 +8,8 @@
 #include <vector>
 #include <random>
 #include <memory>
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 
 namespace ego_planner {
 
@@ -32,6 +34,11 @@ struct MPPITrajectory {
 class MPPIPlanner {
 private:
     GridMap::Ptr grid_map_;
+    
+    // Visualization
+    ros::Publisher mppi_trajectories_pub_;
+    ros::Publisher optimal_trajectory_pub_;
+    std::string frame_id_;
     
     // MPPI parameters
     int num_samples_;          // Number of rollout samples
@@ -78,6 +85,10 @@ private:
     void constrainDynamics(Eigen::Vector3d& velocity, Eigen::Vector3d& acceleration);
     
     MPPITrajectory weightedAverage(const std::vector<MPPITrajectory>& trajectories);
+    
+    // Visualization functions
+    void visualizeTrajectories(const std::vector<MPPITrajectory>& trajectories);
+    void visualizeOptimalTrajectory(const MPPITrajectory& trajectory);
 
 public:
     typedef std::shared_ptr<MPPIPlanner> Ptr;
@@ -85,7 +96,7 @@ public:
     MPPIPlanner();
     ~MPPIPlanner();
     
-    void init(GridMap::Ptr grid_map);
+    void init(ros::NodeHandle& nh, GridMap::Ptr grid_map);
     
     // Main planning interface
     bool planTrajectory(const Eigen::Vector3d& start_pos,
