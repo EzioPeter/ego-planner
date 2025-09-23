@@ -39,32 +39,42 @@ EGO-Planner: An ESDF-free Gradient-based Local Planner for Quadrotors
 
 ## New Features Added
 
-### 🔥 Topological Search Algorithm
-- **Four-directional obstacle avoidance**: When encountering obstacles, the planner automatically explores up to 4 alternative paths (up, down, left, right)
-- **Real-time path visualization**: All topological paths are visualized in RViz with different colors for easy analysis
-- **Optimal path selection**: The system evaluates each path based on length, smoothness, and obstacle proximity to select the best route
-- **Inspired by Fast-Planner**: Implementation follows the proven topological search principles from Fast-Planner
+### 🔥 Integrated Topological Path Planning
+- **Fast-Planner inspired algorithm**: Advanced topological search using circular, vertical, and tangent path strategies
+- **Direct control integration**: Topological paths now directly influence trajectory generation instead of just visualization
+- **Multiple path generation strategies**: 
+  - Circular paths around obstacles (left/right avoidance)
+  - Vertical paths (over/under obstacles in 3D space)  
+  - Tangent-based paths for smooth obstacle circumnavigation
+  - Legacy four-directional paths for compatibility
+- **Automatic best path selection**: System evaluates and selects optimal path based on cost, safety, and smoothness
 
-### 🎯 MPPI Local Planning
-- **Model Predictive Path Integral (MPPI) algorithm** for robust local trajectory planning  
-- **Sampling-based optimization**: Uses Monte Carlo sampling to explore multiple trajectory options
-- **Dynamic constraints**: Respects vehicle velocity and acceleration limits
+### 🎯 MPPI Integrated Local Planning
+- **Model Predictive Path Integral (MPPI) algorithm** integrated with B-spline optimization for enhanced local trajectory planning  
+- **Hybrid optimization approach**: Combines topological path planning with MPPI local refinement
+- **Real-time trajectory optimization**: MPPI refines B-spline trajectories for better obstacle avoidance and smoother motion
+- **Sampling-based optimization**: Uses Monte Carlo sampling to explore multiple trajectory options locally
+- **Dynamic constraints**: Respects vehicle velocity and acceleration limits during local optimization
 - **Multi-objective cost function**: Balances obstacle avoidance, goal reaching, smoothness, and velocity tracking
-- **Real-time performance**: Optimized for online planning with configurable sample sizes
 
-### 📊 Enhanced Visualization
-- **Topological paths display**: Multiple candidate paths shown in different colors in RViz
-- **Path cost visualization**: Visual indication of path quality and selection rationale  
-- **MPPI trajectory rollouts**: Option to visualize sample trajectories for debugging
+### 📊 Enhanced Control Integration
+- **Active topological guidance**: Topological paths directly influence trajectory generation, not just visualization
+- **Hybrid planning pipeline**: Integration of topological planning → B-spline optimization → MPPI local refinement
+- **Best path utilization**: Selected topological path becomes the foundation for B-spline control point generation
+- **Real-time performance**: Optimized pipeline maintains real-time performance while improving trajectory quality
 
 ### 🛠️ Usage
-The new algorithms are integrated into the existing EGO-Planner framework:
+The enhanced algorithms are fully integrated into the EGO-Planner framework:
 ```cpp
-// Topological planning
+// Integrated topological and MPPI planning (automatic in reboundReplan)
+bool success = planner_manager->reboundReplan(start_pos, start_vel, start_acc, 
+                                             goal_pos, goal_vel, flag_polyInit, flag_randomPolyTraj);
+
+// Direct topological planning access
 std::vector<TopoPath> topo_paths;
 bool success = planner_manager->planWithTopo(start_pos, goal_pos, topo_paths);
 
-// MPPI local planning  
+// Direct MPPI planning access  
 MPPITrajectory optimal_traj;
 bool success = planner_manager->planWithMPPI(start_pos, start_vel, goal_pos, goal_vel, optimal_traj);
 ```
@@ -81,24 +91,27 @@ bool success = planner_manager->planWithMPPI(start_pos, start_vel, goal_pos, goa
 ## 1. Related Paper
 EGO-Planner: An ESDF-free Gradient-based Local Planner for Quadrotors, Xin Zhou, Zhepei Wang, Chao Xu and Fei Gao (Accepted by RA-L). [arXiv Preprint](https://arxiv.org/abs/2008.08835), [IEEE Xplore](https://ieeexplore.ieee.org/abstract/document/9309347), and [IEEE Spectrum report](https://spectrum.ieee.org/automaton/robotics/robotics-hardware/video-friday-mit-media-lab-tf8-bionic-ankle).
 
-## 1.1. New Algorithms Technical Details
+## 1.1. Enhanced Algorithms Technical Details
 
-### Topological Search Algorithm
-The topological search algorithm extends the original path searching capabilities by:
-- **Multi-directional exploration**: When encountering obstacles, generates up to 4 alternative paths by moving in perpendicular directions (up/down for altitude changes, left/right for lateral avoidance)
-- **Cost evaluation**: Each path is evaluated based on:
-  - Path length (primary factor)
-  - Smoothness cost (angular changes between segments)
-  - Obstacle proximity cost (safety margin)
-- **Visualization**: All discovered paths are published to RViz for analysis and debugging
+### Integrated Topological Path Planning
+The enhanced topological search algorithm provides direct control influence through:
+- **Multi-strategy path generation**: 
+  - **Circular paths**: Generate left/right circumnavigation routes around obstacles
+  - **Vertical paths**: Create over/under avoidance paths in 3D environments
+  - **Tangent paths**: Fast-Planner inspired tangent-based obstacle avoidance
+  - **Legacy four-directional**: Maintains compatibility with existing approach
+- **Direct control integration**: Selected topological path replaces polynomial trajectory as B-spline control point source
+- **Cost-based selection**: Paths evaluated on length, smoothness, and obstacle proximity for optimal route selection
+- **Real-time visualization**: All candidate paths displayed in RViz for analysis and debugging
 
-### MPPI Algorithm Integration
-Model Predictive Path Integral control provides robust local planning through:
-- **Sampling-based optimization**: Generates multiple trajectory rollouts with controlled noise injection
-- **Importance sampling**: Uses exponential weighting based on trajectory costs
-- **Multi-objective optimization**: Balances multiple competing objectives:
+### MPPI-Enhanced Local Planning  
+Model Predictive Path Integral integration provides enhanced local trajectory refinement:
+- **Hybrid optimization pipeline**: Topological planning → B-spline optimization → MPPI local refinement
+- **Sampling-based local optimization**: MPPI generates multiple trajectory rollouts with controlled noise injection
+- **Importance sampling**: Uses exponential weighting based on trajectory costs for robust optimization
+- **Multi-objective cost balancing**: 
   - Obstacle avoidance (highest priority)
-  - Goal reaching accuracy
+  - Goal reaching accuracy  
   - Trajectory smoothness
   - Velocity profile tracking
 - **Real-time constraints**: Configurable sample counts for computational budget management
