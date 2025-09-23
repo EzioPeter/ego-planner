@@ -248,40 +248,56 @@ namespace ego_planner
              local_target_pt.x(), local_target_pt.y(), local_target_pt.z());
     
     bool use_topo_path = false;
-    if (planWithTopo(start_pt, local_target_pt, topo_paths)) {
+    if (topo_planner_ != nullptr && planWithTopo(start_pt, local_target_pt, topo_paths)) {
         ROS_INFO("[PlannerManager] Found %zu topological paths", topo_paths.size());
         
-        // Select best topological path and use it for control points generation
-        TopoPath best_path = topo_planner_->selectBestPath(topo_paths);
-        ROS_INFO("[PlannerManager] Using topological path with cost %.3f for trajectory generation", best_path.cost);
-        
-        // Replace control points with topological path
-        point_set = best_path.path;
-        
-        // Ensure sufficient points for B-spline generation
-        if (point_set.size() < 7) {
-            // Interpolate additional points along the path
-            std::vector<Eigen::Vector3d> dense_path;
-            for (size_t i = 0; i < point_set.size() - 1; ++i) {
-                dense_path.push_back(point_set[i]);
-                Eigen::Vector3d segment_vec = point_set[i+1] - point_set[i];
-                double segment_len = segment_vec.norm();
-                int num_intermediate = std::max(1, (int)(segment_len / (pp_.ctrl_pt_dist * 0.5)));
+        // Ensure we have valid paths before selecting best one
+        if (!topo_paths.empty()) {
+            // Select best topological path and use it for control points generation
+            TopoPath best_path = topo_planner_->selectBestPath(topo_paths);
+            ROS_INFO("[PlannerManager] Using topological path with cost %.3f for trajectory generation", best_path.cost);
+            
+            // Validate that the best path has sufficient waypoints
+            if (best_path.path.size() >= 2) {
+                // Replace control points with topological path
+                point_set = best_path.path;
                 
-                for (int j = 1; j < num_intermediate; ++j) {
-                    double t = (double)j / num_intermediate;
-                    dense_path.push_back(point_set[i] + t * segment_vec);
+                // Ensure sufficient points for B-spline generation
+                if (point_set.size() < 7) {
+                    // Interpolate additional points along the path
+                    std::vector<Eigen::Vector3d> dense_path;
+                    for (size_t i = 0; i < point_set.size() - 1; ++i) {
+                        dense_path.push_back(point_set[i]);
+                        Eigen::Vector3d segment_vec = point_set[i+1] - point_set[i];
+                        double segment_len = segment_vec.norm();
+                        int num_intermediate = std::max(1, (int)(segment_len / (pp_.ctrl_pt_dist * 0.5)));
+                        
+                        for (int j = 1; j < num_intermediate; ++j) {
+                            double t = (double)j / num_intermediate;
+                            dense_path.push_back(point_set[i] + t * segment_vec);
+                        }
+                    }
+                    dense_path.push_back(point_set.back());
+                    point_set = dense_path;
                 }
+                
+                // Re-parameterize control points using topological path
+                UniformBspline::parameterizeToBspline(ts, point_set, start_end_derivatives, ctrl_pts);
+                use_topo_path = true;
+                
+                ROS_INFO("[PlannerManager] Successfully integrated topological path with %zu waypoints", point_set.size());
+            } else {
+                ROS_WARN("[PlannerManager] Selected topological path has insufficient waypoints (%zu), using original approach", best_path.path.size());
             }
-            dense_path.push_back(point_set.back());
-            point_set = dense_path;
+        } else {
+            ROS_WARN("[PlannerManager] No valid topological paths found, using original approach");
         }
-        
-        // Re-parameterize control points using topological path
-        UniformBspline::parameterizeToBspline(ts, point_set, start_end_derivatives, ctrl_pts);
-        use_topo_path = true;
     } else {
-        ROS_WARN("[PlannerManager] Topological planning failed, continuing with original approach");
+        if (topo_planner_ == nullptr) {
+            ROS_WARN("[PlannerManager] Topological planner not initialized, using original approach");
+        } else {
+            ROS_WARN("[PlannerManager] Topological planning failed, continuing with original approach");
+        }
     }
 
     t_start = ros::Time::now();
