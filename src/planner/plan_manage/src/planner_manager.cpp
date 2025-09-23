@@ -1,5 +1,7 @@
 // #include <fstream>
 #include <plan_manage/planner_manager.h>
+#include <path_searching/topo_prm.h>
+#include <path_searching/mppi_planner.h>
 #include <thread>
 
 namespace ego_planner

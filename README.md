@@ -81,6 +81,28 @@ bool success = planner_manager->planWithMPPI(start_pos, start_vel, goal_pos, goa
 ## 1. Related Paper
 EGO-Planner: An ESDF-free Gradient-based Local Planner for Quadrotors, Xin Zhou, Zhepei Wang, Chao Xu and Fei Gao (Accepted by RA-L). [arXiv Preprint](https://arxiv.org/abs/2008.08835), [IEEE Xplore](https://ieeexplore.ieee.org/abstract/document/9309347), and [IEEE Spectrum report](https://spectrum.ieee.org/automaton/robotics/robotics-hardware/video-friday-mit-media-lab-tf8-bionic-ankle).
 
+## 1.1. New Algorithms Technical Details
+
+### Topological Search Algorithm
+The topological search algorithm extends the original path searching capabilities by:
+- **Multi-directional exploration**: When encountering obstacles, generates up to 4 alternative paths by moving in perpendicular directions (up/down for altitude changes, left/right for lateral avoidance)
+- **Cost evaluation**: Each path is evaluated based on:
+  - Path length (primary factor)
+  - Smoothness cost (angular changes between segments)
+  - Obstacle proximity cost (safety margin)
+- **Visualization**: All discovered paths are published to RViz for analysis and debugging
+
+### MPPI Algorithm Integration
+Model Predictive Path Integral control provides robust local planning through:
+- **Sampling-based optimization**: Generates multiple trajectory rollouts with controlled noise injection
+- **Importance sampling**: Uses exponential weighting based on trajectory costs
+- **Multi-objective optimization**: Balances multiple competing objectives:
+  - Obstacle avoidance (highest priority)
+  - Goal reaching accuracy
+  - Trajectory smoothness
+  - Velocity profile tracking
+- **Real-time constraints**: Configurable sample counts for computational budget management
+
 ## 2. Standard Compilation
 
 **Requirements**: ubuntu 16.04, 18.04 or 20.04 with ros-desktop-full installation.

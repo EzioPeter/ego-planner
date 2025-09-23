@@ -8,13 +8,16 @@
 #include <ego_planner/DataDisp.h>
 #include <plan_env/grid_map.h>
 #include <plan_manage/plan_container.hpp>
-#include <path_searching/topo_prm.h>
-#include <path_searching/mppi_planner.h>
 #include <ros/ros.h>
 #include <traj_utils/planning_visualization.h>
 
 namespace ego_planner
 {
+  // Forward declarations for new algorithms
+  class TopoPRM;
+  class MPPIPlanner;
+  struct TopoPath;
+  struct MPPITrajectory;
 
   // Fast Planner Manager
   // Key algorithms of mapping and planning are called
