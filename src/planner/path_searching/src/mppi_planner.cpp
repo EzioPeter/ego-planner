@@ -1,0 +1,276 @@
+#include "path_searching/mppi_planner.h"
+#include <cmath>
+#include <algorithm>
+#include <numeric>
+
+using namespace std;
+using namespace Eigen;
+
+namespace ego_planner {
+
+MPPIPlanner::MPPIPlanner() 
+    : num_samples_(1000), horizon_steps_(20), dt_(0.1), lambda_(1.0),
+      sigma_pos_(0.2), sigma_vel_(0.5), sigma_acc_(1.0),
+      w_obstacle_(100.0), w_smoothness_(10.0), w_goal_(50.0), w_velocity_(20.0),
+      max_velocity_(3.0), max_acceleration_(3.0),
+      generator_(std::random_device{}()), normal_dist_(0.0, 1.0) {
+}
+
+MPPIPlanner::~MPPIPlanner() {
+}
+
+void MPPIPlanner::init(GridMap::Ptr grid_map) {
+    grid_map_ = grid_map;
+    ROS_INFO("[MPPI] Initialized with %d samples, horizon %d steps, dt %.3f", 
+             num_samples_, horizon_steps_, dt_);
+}
+
+bool MPPIPlanner::planTrajectory(const Vector3d& start_pos,
+                                const Vector3d& start_vel,
+                                const Vector3d& goal_pos,
+                                const Vector3d& goal_vel,
+                                MPPITrajectory& optimal_trajectory) {
+    
+    vector<MPPITrajectory> trajectories(num_samples_);
+    double min_cost = std::numeric_limits<double>::max();
+    
+    // Generate rollout trajectories
+    for (int i = 0; i < num_samples_; ++i) {
+        trajectories[i].resize(horizon_steps_);
+        rolloutTrajectory(start_pos, start_vel, goal_pos, goal_vel, trajectories[i]);
+        
+        double cost = calculateTrajectoryCost(trajectories[i], goal_pos, goal_vel);
+        trajectories[i].cost = cost;
+        
+        if (cost < min_cost) {
+            min_cost = cost;
+        }
+    }
+    
+    if (min_cost >= std::numeric_limits<double>::max()) {
+        ROS_WARN("[MPPI] All trajectories have infinite cost");
+        return false;
+    }
+    
+    // Calculate importance weights using exponential of negative cost
+    double weight_sum = 0.0;
+    for (auto& traj : trajectories) {
+        traj.weight = exp(-(traj.cost - min_cost) / lambda_);
+        weight_sum += traj.weight;
+    }
+    
+    // Normalize weights
+    if (weight_sum > 1e-8) {
+        for (auto& traj : trajectories) {
+            traj.weight /= weight_sum;
+        }
+    } else {
+        ROS_WARN("[MPPI] Weight sum too small, using uniform weights");
+        for (auto& traj : trajectories) {
+            traj.weight = 1.0 / num_samples_;
+        }
+    }
+    
+    // Compute weighted average trajectory
+    optimal_trajectory = weightedAverage(trajectories);
+    
+    ROS_DEBUG("[MPPI] Generated optimal trajectory with cost: %f", optimal_trajectory.cost);
+    return true;
+}
+
+void MPPIPlanner::rolloutTrajectory(const Vector3d& start_pos,
+                                   const Vector3d& start_vel,
+                                   const Vector3d& goal_pos,
+                                   const Vector3d& goal_vel,
+                                   MPPITrajectory& trajectory) {
+    // Initialize trajectory
+    trajectory.positions[0] = start_pos;
+    trajectory.velocities[0] = start_vel;
+    trajectory.accelerations[0] = Vector3d::Zero();
+    
+    // Generate noisy control inputs and rollout dynamics
+    for (int t = 1; t < horizon_steps_; ++t) {
+        // Calculate nominal control towards goal
+        Vector3d pos_error = goal_pos - trajectory.positions[t-1];
+        Vector3d vel_error = goal_vel - trajectory.velocities[t-1];
+        
+        // Simple PD control for nominal trajectory
+        Vector3d nominal_acc = 2.0 * pos_error + 1.0 * vel_error;
+        
+        // Add noise to control
+        Vector3d noise_acc(
+            sigma_acc_ * normal_dist_(generator_),
+            sigma_acc_ * normal_dist_(generator_),
+            sigma_acc_ * normal_dist_(generator_)
+        );
+        
+        trajectory.accelerations[t] = nominal_acc + noise_acc;
+        
+        // Apply dynamic constraints
+        constrainDynamics(trajectory.velocities[t-1], trajectory.accelerations[t]);
+        
+        // Forward integrate dynamics
+        trajectory.velocities[t] = trajectory.velocities[t-1] + trajectory.accelerations[t] * dt_;
+        trajectory.positions[t] = trajectory.positions[t-1] + trajectory.velocities[t-1] * dt_ + 
+                                 0.5 * trajectory.accelerations[t] * dt_ * dt_;
+        
+        // Add position noise
+        Vector3d pos_noise(
+            sigma_pos_ * normal_dist_(generator_),
+            sigma_pos_ * normal_dist_(generator_),
+            sigma_pos_ * normal_dist_(generator_)
+        );
+        trajectory.positions[t] += pos_noise;
+        
+        // Add velocity noise
+        Vector3d vel_noise(
+            sigma_vel_ * normal_dist_(generator_),
+            sigma_vel_ * normal_dist_(generator_),
+            sigma_vel_ * normal_dist_(generator_)
+        );
+        trajectory.velocities[t] += vel_noise;
+        
+        // Constrain velocities
+        if (trajectory.velocities[t].norm() > max_velocity_) {
+            trajectory.velocities[t] = trajectory.velocities[t].normalized() * max_velocity_;
+        }
+    }
+}
+
+double MPPIPlanner::calculateTrajectoryCost(const MPPITrajectory& trajectory,
+                                          const Vector3d& goal_pos,
+                                          const Vector3d& goal_vel) {
+    double total_cost = 0.0;
+    
+    for (int t = 0; t < trajectory.size(); ++t) {
+        // Obstacle cost
+        total_cost += w_obstacle_ * obstacleCost(trajectory.positions[t]);
+        
+        // Check for collision - infinite cost if in collision
+        if (grid_map_->getInflateOccupancy(trajectory.positions[t])) {
+            return std::numeric_limits<double>::max();
+        }
+    }
+    
+    // Smoothness cost
+    total_cost += w_smoothness_ * smoothnessCost(trajectory);
+    
+    // Goal reaching cost
+    total_cost += w_goal_ * goalCost(trajectory, goal_pos, goal_vel);
+    
+    // Velocity cost
+    total_cost += w_velocity_ * velocityCost(trajectory, goal_vel);
+    
+    return total_cost;
+}
+
+double MPPIPlanner::obstacleCost(const Vector3d& position) {
+    // Sample around the position to compute distance to nearest obstacle
+    double min_dist = std::numeric_limits<double>::max();
+    double search_radius = 1.0;
+    double resolution = 0.2;
+    
+    for (double dx = -search_radius; dx <= search_radius; dx += resolution) {
+        for (double dy = -search_radius; dy <= search_radius; dy += resolution) {
+            for (double dz = -search_radius; dz <= search_radius; dz += resolution) {
+                Vector3d sample = position + Vector3d(dx, dy, dz);
+                if (grid_map_->getInflateOccupancy(sample)) {
+                    double dist = Vector3d(dx, dy, dz).norm();
+                    min_dist = std::min(min_dist, dist);
+                }
+            }
+        }
+    }
+    
+    if (min_dist < search_radius) {
+        return 1.0 / (min_dist + 0.1); // Inverse distance cost
+    }
+    
+    return 0.0;
+}
+
+double MPPIPlanner::smoothnessCost(const MPPITrajectory& trajectory) {
+    double cost = 0.0;
+    
+    // Acceleration smoothness
+    for (int t = 1; t < trajectory.size(); ++t) {
+        Vector3d acc_diff = trajectory.accelerations[t] - trajectory.accelerations[t-1];
+        cost += acc_diff.squaredNorm();
+    }
+    
+    // Velocity smoothness  
+    for (int t = 1; t < trajectory.size(); ++t) {
+        Vector3d vel_diff = trajectory.velocities[t] - trajectory.velocities[t-1];
+        cost += 0.5 * vel_diff.squaredNorm();
+    }
+    
+    return cost;
+}
+
+double MPPIPlanner::goalCost(const MPPITrajectory& trajectory,
+                           const Vector3d& goal_pos,
+                           const Vector3d& goal_vel) {
+    // Terminal state cost
+    Vector3d final_pos = trajectory.positions.back();
+    Vector3d final_vel = trajectory.velocities.back();
+    
+    double pos_error = (final_pos - goal_pos).squaredNorm();
+    double vel_error = (final_vel - goal_vel).squaredNorm();
+    
+    return pos_error + 0.5 * vel_error;
+}
+
+double MPPIPlanner::velocityCost(const MPPITrajectory& trajectory,
+                               const Vector3d& desired_vel) {
+    double cost = 0.0;
+    
+    for (int t = 0; t < trajectory.size(); ++t) {
+        Vector3d vel_error = trajectory.velocities[t] - desired_vel;
+        cost += vel_error.squaredNorm();
+    }
+    
+    return cost / trajectory.size();
+}
+
+void MPPIPlanner::constrainDynamics(Vector3d& velocity, Vector3d& acceleration) {
+    // Limit acceleration magnitude
+    if (acceleration.norm() > max_acceleration_) {
+        acceleration = acceleration.normalized() * max_acceleration_;
+    }
+    
+    // Predict next velocity and limit if necessary
+    Vector3d next_vel = velocity + acceleration * dt_;
+    if (next_vel.norm() > max_velocity_) {
+        next_vel = next_vel.normalized() * max_velocity_;
+        acceleration = (next_vel - velocity) / dt_;
+    }
+}
+
+MPPITrajectory MPPIPlanner::weightedAverage(const vector<MPPITrajectory>& trajectories) {
+    MPPITrajectory avg_trajectory;
+    avg_trajectory.resize(horizon_steps_);
+    
+    // Initialize with zeros
+    for (int t = 0; t < horizon_steps_; ++t) {
+        avg_trajectory.positions[t] = Vector3d::Zero();
+        avg_trajectory.velocities[t] = Vector3d::Zero();
+        avg_trajectory.accelerations[t] = Vector3d::Zero();
+    }
+    
+    // Weighted average
+    double total_cost = 0.0;
+    for (const auto& traj : trajectories) {
+        for (int t = 0; t < horizon_steps_; ++t) {
+            avg_trajectory.positions[t] += traj.weight * traj.positions[t];
+            avg_trajectory.velocities[t] += traj.weight * traj.velocities[t];
+            avg_trajectory.accelerations[t] += traj.weight * traj.accelerations[t];
+        }
+        total_cost += traj.weight * traj.cost;
+    }
+    
+    avg_trajectory.cost = total_cost;
+    
+    return avg_trajectory;
+}
+
+} // namespace ego_planner

@@ -32,6 +32,25 @@ namespace ego_planner
     bspline_optimizer_rebound_->a_star_.reset(new AStar);
     bspline_optimizer_rebound_->a_star_->initGridMap(grid_map_, Eigen::Vector3i(100, 100, 100));
 
+    /* Initialize new planning modules */
+    topo_planner_.reset(new TopoPRM);
+    topo_planner_->init(nh, grid_map_);
+    topo_planner_->setStepSize(0.2);
+    topo_planner_->setSearchRadius(3.0);
+    topo_planner_->setMaxSampleNum(1000);
+
+    mppi_planner_.reset(new MPPIPlanner);
+    mppi_planner_->init(grid_map_);
+    mppi_planner_->setNumSamples(500);
+    mppi_planner_->setHorizonSteps(20);
+    mppi_planner_->setTimeStep(0.1);
+    mppi_planner_->setTemperature(1.0);
+    mppi_planner_->setNoiseParameters(0.2, 0.5, 1.0);
+    mppi_planner_->setCostWeights(100.0, 10.0, 50.0, 20.0);
+    mppi_planner_->setVehicleLimits(pp_.max_vel_, pp_.max_acc_);
+
+    ROS_INFO("[PlannerManager] Initialized topological and MPPI planners");
+
     visualization_ = vis;
   }
 
@@ -480,5 +499,46 @@ namespace ego_planner
     }
     UniformBspline::parameterizeToBspline(dt, point_set, start_end_derivative, ctrl_pts);
   }
+
+  // SECTION new topological and MPPI planning methods
+
+  bool EGOPlannerManager::planWithTopo(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_pos,
+                                      std::vector<TopoPath> &topo_paths) {
+    if (topo_planner_ == nullptr) {
+      ROS_ERROR("[PlannerManager] Topological planner not initialized");
+      return false;
+    }
+
+    bool success = topo_planner_->searchTopoPaths(start_pos, goal_pos, topo_paths);
+    
+    if (success) {
+      ROS_INFO("[PlannerManager] Topological planning succeeded, found %zu paths", topo_paths.size());
+    } else {
+      ROS_WARN("[PlannerManager] Topological planning failed");
+    }
+
+    return success;
+  }
+
+  bool EGOPlannerManager::planWithMPPI(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &start_vel,
+                                      const Eigen::Vector3d &goal_pos, const Eigen::Vector3d &goal_vel,
+                                      MPPITrajectory &optimal_traj) {
+    if (mppi_planner_ == nullptr) {
+      ROS_ERROR("[PlannerManager] MPPI planner not initialized");
+      return false;
+    }
+
+    bool success = mppi_planner_->planTrajectory(start_pos, start_vel, goal_pos, goal_vel, optimal_traj);
+    
+    if (success) {
+      ROS_INFO("[PlannerManager] MPPI planning succeeded, trajectory cost: %f", optimal_traj.cost);
+    } else {
+      ROS_WARN("[PlannerManager] MPPI planning failed");
+    }
+
+    return success;
+  }
+
+  // !SECTION
 
 } // namespace ego_planner
