@@ -99,20 +99,21 @@ namespace ego_planner
       }
     }
 
-    /*** a star search ***/
-    vector<vector<Eigen::Vector3d>> a_star_pathes;
+    /*** MPPI local path search ***/
+    vector<vector<Eigen::Vector3d>> mppi_pathes;
     for (size_t i = 0; i < segment_ids.size(); ++i)
     {
-      //cout << "in=" << in.transpose() << " out=" << out.transpose() << endl;
       Eigen::Vector3d in(init_points.col(segment_ids[i].first)), out(init_points.col(segment_ids[i].second));
-      if (a_star_->AstarSearch(/*(in-out).norm()/10+0.05*/ 0.1, in, out))
+      vector<Eigen::Vector3d> local_path;
+      if (mppi_planner_->planLocalPath(in, out, local_path))
       {
-        a_star_pathes.push_back(a_star_->getPath());
+        mppi_pathes.push_back(local_path);
+        ROS_DEBUG("[BsplineOptimizer] MPPI local path generated with %zu points", local_path.size());
       }
       else
       {
-        ROS_ERROR("a star error, force return!");
-        return a_star_pathes;
+        ROS_ERROR("MPPI local planning error, force return!");
+        return mppi_pathes;
       }
     }
 
@@ -192,28 +193,28 @@ namespace ego_planner
       for (int j = segment_ids[i].first + 1; j < segment_ids[i].second; ++j)
       {
         Eigen::Vector3d ctrl_pts_law(cps_.points.col(j + 1) - cps_.points.col(j - 1)), intersection_point;
-        int Astar_id = a_star_pathes[i].size() / 2, last_Astar_id; // Let "Astar_id = id_of_the_most_far_away_Astar_point" will be better, but it needs more computation
-        double val = (a_star_pathes[i][Astar_id] - cps_.points.col(j)).dot(ctrl_pts_law), last_val = val;
-        while (Astar_id >= 0 && Astar_id < (int)a_star_pathes[i].size())
+        int MPPI_id = mppi_pathes[i].size() / 2, last_MPPI_id; // Use middle point of MPPI path
+        double val = (mppi_pathes[i][MPPI_id] - cps_.points.col(j)).dot(ctrl_pts_law), last_val = val;
+        while (MPPI_id >= 0 && MPPI_id < (int)mppi_pathes[i].size())
         {
-          last_Astar_id = Astar_id;
+          last_MPPI_id = MPPI_id;
 
           if (val >= 0)
-            --Astar_id;
+            --MPPI_id;
           else
-            ++Astar_id;
+            ++MPPI_id;
 
-          val = (a_star_pathes[i][Astar_id] - cps_.points.col(j)).dot(ctrl_pts_law);
+          val = (mppi_pathes[i][MPPI_id] - cps_.points.col(j)).dot(ctrl_pts_law);
 
           if (val * last_val <= 0 && (abs(val) > 0 || abs(last_val) > 0)) // val = last_val = 0.0 is not allowed
           {
             intersection_point =
-                a_star_pathes[i][Astar_id] +
-                ((a_star_pathes[i][Astar_id] - a_star_pathes[i][last_Astar_id]) *
-                 (ctrl_pts_law.dot(cps_.points.col(j) - a_star_pathes[i][Astar_id]) / ctrl_pts_law.dot(a_star_pathes[i][Astar_id] - a_star_pathes[i][last_Astar_id])) // = t
+                mppi_pathes[i][MPPI_id] +
+                ((mppi_pathes[i][MPPI_id] - mppi_pathes[i][last_MPPI_id]) *
+                 (ctrl_pts_law.dot(cps_.points.col(j) - mppi_pathes[i][MPPI_id]) / ctrl_pts_law.dot(mppi_pathes[i][MPPI_id] - mppi_pathes[i][last_MPPI_id])) // = t
                 );
 
-            //cout << "i=" << i << " j=" << j << " Astar_id=" << Astar_id << " last_Astar_id=" << last_Astar_id << " intersection_point = " << intersection_point.transpose() << endl;
+            //cout << "i=" << i << " j=" << j << " MPPI_id=" << MPPI_id << " last_MPPI_id=" << last_MPPI_id << " intersection_point = " << intersection_point.transpose() << endl;
 
             got_intersection_id = j;
             break;
@@ -243,30 +244,30 @@ namespace ego_planner
         }
       }
 
-      /* Corner case: the segment length is too short. Here the control points may outside the A* path, leading to opposite gradient direction. So I have to take special care of it */
+      /* Corner case: the segment length is too short. Here the control points may outside the MPPI path, leading to opposite gradient direction. So I have to take special care of it */
       if (segment_ids[i].second - segment_ids[i].first == 1)
       {
         Eigen::Vector3d ctrl_pts_law(cps_.points.col(segment_ids[i].second) - cps_.points.col(segment_ids[i].first)), intersection_point;
         Eigen::Vector3d middle_point = (cps_.points.col(segment_ids[i].second) + cps_.points.col(segment_ids[i].first)) / 2;
-        int Astar_id = a_star_pathes[i].size() / 2, last_Astar_id; // Let "Astar_id = id_of_the_most_far_away_Astar_point" will be better, but it needs more computation
-        double val = (a_star_pathes[i][Astar_id] - middle_point).dot(ctrl_pts_law), last_val = val;
-        while (Astar_id >= 0 && Astar_id < (int)a_star_pathes[i].size())
+        int MPPI_id = mppi_pathes[i].size() / 2, last_MPPI_id; // Use middle point of MPPI path
+        double val = (mppi_pathes[i][MPPI_id] - middle_point).dot(ctrl_pts_law), last_val = val;
+        while (MPPI_id >= 0 && MPPI_id < (int)mppi_pathes[i].size())
         {
-          last_Astar_id = Astar_id;
+          last_MPPI_id = MPPI_id;
 
           if (val >= 0)
-            --Astar_id;
+            --MPPI_id;
           else
-            ++Astar_id;
+            ++MPPI_id;
 
-          val = (a_star_pathes[i][Astar_id] - middle_point).dot(ctrl_pts_law);
+          val = (mppi_pathes[i][MPPI_id] - middle_point).dot(ctrl_pts_law);
 
           if (val * last_val <= 0 && (abs(val) > 0 || abs(last_val) > 0)) // val = last_val = 0.0 is not allowed
           {
             intersection_point =
-                a_star_pathes[i][Astar_id] +
-                ((a_star_pathes[i][Astar_id] - a_star_pathes[i][last_Astar_id]) *
-                 (ctrl_pts_law.dot(middle_point - a_star_pathes[i][Astar_id]) / ctrl_pts_law.dot(a_star_pathes[i][Astar_id] - a_star_pathes[i][last_Astar_id])) // = t
+                mppi_pathes[i][MPPI_id] +
+                ((mppi_pathes[i][MPPI_id] - mppi_pathes[i][last_MPPI_id]) *
+                 (ctrl_pts_law.dot(middle_point - mppi_pathes[i][MPPI_id]) / ctrl_pts_law.dot(mppi_pathes[i][MPPI_id] - mppi_pathes[i][last_MPPI_id])) // = t
                 );
 
             if ((intersection_point - middle_point).norm() > 0.01) // 1cm.
@@ -306,7 +307,7 @@ namespace ego_planner
       }
     }
 
-    return a_star_pathes;
+    return mppi_pathes;
   }
 
   int BsplineOptimizer::earlyExit(void *func_data, const double *x, const double *g, const double fx, const double xnorm, const double gnorm, const double step, int n, int k, int ls)
@@ -730,18 +731,19 @@ namespace ego_planner
 
     if (flag_new_obs_valid)
     {
-      vector<vector<Eigen::Vector3d>> a_star_pathes;
+      vector<vector<Eigen::Vector3d>> mppi_pathes;
       for (size_t i = 0; i < segment_ids.size(); ++i)
       {
-        /*** a star search ***/
+        /*** MPPI local path search ***/
         Eigen::Vector3d in(cps_.points.col(segment_ids[i].first)), out(cps_.points.col(segment_ids[i].second));
-        if (a_star_->AstarSearch(/*(in-out).norm()/10+0.05*/ 0.1, in, out))
+        vector<Eigen::Vector3d> local_path;
+        if (mppi_planner_->planLocalPath(in, out, local_path))
         {
-          a_star_pathes.push_back(a_star_->getPath());
+          mppi_pathes.push_back(local_path);
         }
         else
         {
-          ROS_ERROR("a star error");
+          ROS_ERROR("MPPI local planning error");
           segment_ids.erase(segment_ids.begin() + i);
           i--;
         }
@@ -759,27 +761,27 @@ namespace ego_planner
         for (int j = segment_ids[i].first + 1; j < segment_ids[i].second; ++j)
         {
           Eigen::Vector3d ctrl_pts_law(cps_.points.col(j + 1) - cps_.points.col(j - 1)), intersection_point;
-          int Astar_id = a_star_pathes[i].size() / 2, last_Astar_id; // Let "Astar_id = id_of_the_most_far_away_Astar_point" will be better, but it needs more computation
-          double val = (a_star_pathes[i][Astar_id] - cps_.points.col(j)).dot(ctrl_pts_law), last_val = val;
-          while (Astar_id >= 0 && Astar_id < (int)a_star_pathes[i].size())
+          int MPPI_id = mppi_pathes[i].size() / 2, last_MPPI_id; // Use middle point of MPPI path
+          double val = (mppi_pathes[i][MPPI_id] - cps_.points.col(j)).dot(ctrl_pts_law), last_val = val;
+          while (MPPI_id >= 0 && MPPI_id < (int)mppi_pathes[i].size())
           {
-            last_Astar_id = Astar_id;
+            last_MPPI_id = MPPI_id;
 
             if (val >= 0)
-              --Astar_id;
+              --MPPI_id;
             else
-              ++Astar_id;
+              ++MPPI_id;
 
-            val = (a_star_pathes[i][Astar_id] - cps_.points.col(j)).dot(ctrl_pts_law);
+            val = (mppi_pathes[i][MPPI_id] - cps_.points.col(j)).dot(ctrl_pts_law);
 
             // cout << val << endl;
 
             if (val * last_val <= 0 && (abs(val) > 0 || abs(last_val) > 0)) // val = last_val = 0.0 is not allowed
             {
               intersection_point =
-                  a_star_pathes[i][Astar_id] +
-                  ((a_star_pathes[i][Astar_id] - a_star_pathes[i][last_Astar_id]) *
-                   (ctrl_pts_law.dot(cps_.points.col(j) - a_star_pathes[i][Astar_id]) / ctrl_pts_law.dot(a_star_pathes[i][Astar_id] - a_star_pathes[i][last_Astar_id])) // = t
+                  mppi_pathes[i][MPPI_id] +
+                  ((mppi_pathes[i][MPPI_id] - mppi_pathes[i][last_MPPI_id]) *
+                   (ctrl_pts_law.dot(cps_.points.col(j) - mppi_pathes[i][MPPI_id]) / ctrl_pts_law.dot(mppi_pathes[i][MPPI_id] - mppi_pathes[i][last_MPPI_id])) // = t
                   );
 
               got_intersection_id = j;

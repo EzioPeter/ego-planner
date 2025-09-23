@@ -287,6 +287,48 @@ MPPITrajectory MPPIPlanner::weightedAverage(const vector<MPPITrajectory>& trajec
     return avg_trajectory;
 }
 
+bool MPPIPlanner::planLocalPath(const Vector3d& start_pos,
+                               const Vector3d& goal_pos,
+                               vector<Vector3d>& path_points) {
+    path_points.clear();
+    
+    // Use a simplified MPPI for local path planning
+    Vector3d start_vel = Vector3d::Zero();
+    Vector3d goal_vel = Vector3d::Zero();
+    
+    // Reduce samples and horizon for faster local planning
+    int original_samples = num_samples_;
+    int original_horizon = horizon_steps_;
+    num_samples_ = 200;  // Fewer samples for speed
+    horizon_steps_ = 10; // Shorter horizon for local planning
+    
+    MPPITrajectory local_trajectory;
+    bool success = planTrajectory(start_pos, start_vel, goal_pos, goal_vel, local_trajectory);
+    
+    // Restore original parameters
+    num_samples_ = original_samples;
+    horizon_steps_ = original_horizon;
+    
+    if (!success || local_trajectory.positions.empty()) {
+        ROS_WARN("[MPPI] Local path planning failed");
+        return false;
+    }
+    
+    // Extract path points from trajectory (subsample for efficiency)
+    int step = std::max(1, (int)(local_trajectory.positions.size() / 10)); // Max 10 points
+    for (size_t i = 0; i < local_trajectory.positions.size(); i += step) {
+        path_points.push_back(local_trajectory.positions[i]);
+    }
+    
+    // Always include the goal point
+    if (path_points.empty() || (path_points.back() - goal_pos).norm() > 0.1) {
+        path_points.push_back(goal_pos);
+    }
+    
+    ROS_DEBUG("[MPPI] Generated local path with %zu points", path_points.size());
+    return true;
+}
+
 void MPPIPlanner::visualizeTrajectories(const vector<MPPITrajectory>& trajectories) {
     if (trajectories.empty()) return;
     

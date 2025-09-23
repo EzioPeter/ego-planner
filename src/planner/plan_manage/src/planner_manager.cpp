@@ -31,8 +31,8 @@ namespace ego_planner
     bspline_optimizer_rebound_.reset(new BsplineOptimizer);
     bspline_optimizer_rebound_->setParam(nh);
     bspline_optimizer_rebound_->setEnvironment(grid_map_);
-    bspline_optimizer_rebound_->a_star_.reset(new AStar);
-    bspline_optimizer_rebound_->a_star_->initGridMap(grid_map_, Eigen::Vector3i(100, 100, 100));
+    bspline_optimizer_rebound_->mppi_planner_.reset(new MPPIPlanner);
+    bspline_optimizer_rebound_->mppi_planner_->init(nh, grid_map_);
 
     /* Initialize new planning modules */
     topo_planner_.reset(new TopoPRM);
@@ -239,7 +239,8 @@ namespace ego_planner
 
     static int vis_id = 0;
     visualization_->displayInitPathList(point_set, 0.2, 0);
-    visualization_->displayAStarList(a_star_pathes, vis_id);
+    // Note: MPPI paths are now handled internally by MPPI planner visualization
+    // No need for separate displayAStarList call
 
     /*** STEP 1.5: TOPOLOGICAL PLANNING ***/
     std::vector<TopoPath> topo_paths;

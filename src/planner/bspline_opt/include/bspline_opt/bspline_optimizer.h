@@ -2,7 +2,7 @@
 #define _BSPLINE_OPTIMIZER_H_
 
 #include <Eigen/Eigen>
-#include <path_searching/dyn_a_star.h>
+#include <path_searching/mppi_planner.h>
 #include <bspline_opt/uniform_bspline.h>
 #include <plan_env/grid_map.h>
 #include <ros/ros.h>
@@ -74,7 +74,7 @@ namespace ego_planner
 
     Eigen::MatrixXd getControlPoints();
 
-    AStar::Ptr a_star_;
+    MPPIPlanner::Ptr mppi_planner_;
     std::vector<Eigen::Vector3d> ref_pts_;
 
     std::vector<std::vector<Eigen::Vector3d>> initControlPoints(Eigen::MatrixXd &init_points, bool flag_first_init = true);

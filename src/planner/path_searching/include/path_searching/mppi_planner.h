@@ -105,6 +105,11 @@ public:
                        const Eigen::Vector3d& goal_vel,
                        MPPITrajectory& optimal_trajectory);
     
+    // Local path planning interface (for replacing A* in B-spline optimizer)
+    bool planLocalPath(const Eigen::Vector3d& start_pos,
+                      const Eigen::Vector3d& goal_pos,
+                      std::vector<Eigen::Vector3d>& path_points);
+    
     // Parameter setters
     void setNumSamples(int num_samples) { num_samples_ = num_samples; }
     void setHorizonSteps(int steps) { horizon_steps_ = steps; }
