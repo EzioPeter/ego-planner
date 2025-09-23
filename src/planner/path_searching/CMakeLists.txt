@@ -36,7 +36,18 @@ include_directories(
 
 add_library( path_searching 
     src/dyn_a_star.cpp
+    src/topo_prm.cpp
+    src/mppi_planner.cpp
     )
 target_link_libraries( path_searching
     ${catkin_LIBRARIES} 
     )  
+
+# Test executable for new algorithms
+add_executable( test_topo_mppi
+    src/test_topo_mppi.cpp
+    )
+target_link_libraries( test_topo_mppi
+    path_searching
+    ${catkin_LIBRARIES}
+    )

@@ -13,6 +13,11 @@
 
 namespace ego_planner
 {
+  // Forward declarations for new algorithms
+  class TopoPRM;
+  class MPPIPlanner;
+  struct TopoPath;
+  struct MPPITrajectory;
 
   // Fast Planner Manager
   // Key algorithms of mapping and planning are called
@@ -35,6 +40,15 @@ namespace ego_planner
     bool planGlobalTrajWaypoints(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &start_vel, const Eigen::Vector3d &start_acc,
                                  const std::vector<Eigen::Vector3d> &waypoints, const Eigen::Vector3d &end_vel, const Eigen::Vector3d &end_acc);
 
+    /* Topological planning interface */
+    bool planWithTopo(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &goal_pos,
+                     std::vector<TopoPath> &topo_paths);
+    
+    /* MPPI planning interface */
+    bool planWithMPPI(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &start_vel,
+                     const Eigen::Vector3d &goal_pos, const Eigen::Vector3d &goal_vel,
+                     MPPITrajectory &optimal_traj);
+
     void initPlanModules(ros::NodeHandle &nh, PlanningVisualization::Ptr vis = NULL);
 
     PlanParameters pp_;
@@ -47,6 +61,10 @@ namespace ego_planner
     PlanningVisualization::Ptr visualization_;
 
     BsplineOptimizer::Ptr bspline_optimizer_rebound_;
+    
+    /* New topological and MPPI planning modules */
+    TopoPRM::Ptr topo_planner_;
+    MPPIPlanner::Ptr mppi_planner_;
 
     int continous_failures_count_{0};
 

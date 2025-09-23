@@ -37,6 +37,38 @@ EGO-Planner: An ESDF-free Gradient-based Local Planner for Quadrotors
 
 **EGO-Planner** is a lightweight gradient-based local planner without ESDF construction, which significantly reduces computation time compared to some state-of-the-art methods <!--(EWOK and Fast-Planner)-->. The total planning time is only **around 1ms** and don't need to compute ESDF.
 
+## New Features Added
+
+### 🔥 Topological Search Algorithm
+- **Four-directional obstacle avoidance**: When encountering obstacles, the planner automatically explores up to 4 alternative paths (up, down, left, right)
+- **Real-time path visualization**: All topological paths are visualized in RViz with different colors for easy analysis
+- **Optimal path selection**: The system evaluates each path based on length, smoothness, and obstacle proximity to select the best route
+- **Inspired by Fast-Planner**: Implementation follows the proven topological search principles from Fast-Planner
+
+### 🎯 MPPI Local Planning
+- **Model Predictive Path Integral (MPPI) algorithm** for robust local trajectory planning  
+- **Sampling-based optimization**: Uses Monte Carlo sampling to explore multiple trajectory options
+- **Dynamic constraints**: Respects vehicle velocity and acceleration limits
+- **Multi-objective cost function**: Balances obstacle avoidance, goal reaching, smoothness, and velocity tracking
+- **Real-time performance**: Optimized for online planning with configurable sample sizes
+
+### 📊 Enhanced Visualization
+- **Topological paths display**: Multiple candidate paths shown in different colors in RViz
+- **Path cost visualization**: Visual indication of path quality and selection rationale  
+- **MPPI trajectory rollouts**: Option to visualize sample trajectories for debugging
+
+### 🛠️ Usage
+The new algorithms are integrated into the existing EGO-Planner framework:
+```cpp
+// Topological planning
+std::vector<TopoPath> topo_paths;
+bool success = planner_manager->planWithTopo(start_pos, goal_pos, topo_paths);
+
+// MPPI local planning  
+MPPITrajectory optimal_traj;
+bool success = planner_manager->planWithMPPI(start_pos, start_vel, goal_pos, goal_vel, optimal_traj);
+```
+
 <p align = "center">
 <img src="pictures/title.gif" width = "413" height = "232" border="5" />
 <img src="pictures/comp.jpg" width = "413" height = "232" border="5" />
@@ -49,9 +81,33 @@ EGO-Planner: An ESDF-free Gradient-based Local Planner for Quadrotors
 ## 1. Related Paper
 EGO-Planner: An ESDF-free Gradient-based Local Planner for Quadrotors, Xin Zhou, Zhepei Wang, Chao Xu and Fei Gao (Accepted by RA-L). [arXiv Preprint](https://arxiv.org/abs/2008.08835), [IEEE Xplore](https://ieeexplore.ieee.org/abstract/document/9309347), and [IEEE Spectrum report](https://spectrum.ieee.org/automaton/robotics/robotics-hardware/video-friday-mit-media-lab-tf8-bionic-ankle).
 
+## 1.1. New Algorithms Technical Details
+
+### Topological Search Algorithm
+The topological search algorithm extends the original path searching capabilities by:
+- **Multi-directional exploration**: When encountering obstacles, generates up to 4 alternative paths by moving in perpendicular directions (up/down for altitude changes, left/right for lateral avoidance)
+- **Cost evaluation**: Each path is evaluated based on:
+  - Path length (primary factor)
+  - Smoothness cost (angular changes between segments)
+  - Obstacle proximity cost (safety margin)
+- **Visualization**: All discovered paths are published to RViz for analysis and debugging
+
+### MPPI Algorithm Integration
+Model Predictive Path Integral control provides robust local planning through:
+- **Sampling-based optimization**: Generates multiple trajectory rollouts with controlled noise injection
+- **Importance sampling**: Uses exponential weighting based on trajectory costs
+- **Multi-objective optimization**: Balances multiple competing objectives:
+  - Obstacle avoidance (highest priority)
+  - Goal reaching accuracy
+  - Trajectory smoothness
+  - Velocity profile tracking
+- **Real-time constraints**: Configurable sample counts for computational budget management
+
 ## 2. Standard Compilation
 
 **Requirements**: ubuntu 16.04, 18.04 or 20.04 with ros-desktop-full installation.
+
+**New Dependencies**: The enhanced version includes additional C++14 features and improved random number generation for MPPI algorithm.
 
 **Step 1**. Install [Armadillo](http://arma.sourceforge.net/), which is required by **uav_simulator**.
 ```
@@ -95,6 +151,32 @@ Then you can follow the gif below to control the drone.
 <p align = "center">
 <img src="pictures/sim_demo.gif" width = "640" height = "438" border="5" />
 </p>
+
+## 2.1. New Visualization Topics in RViz
+
+The enhanced EGO-Planner publishes additional visualization topics:
+
+- `/topo_paths`: Displays all discovered topological paths in different colors
+- `/a_star_list`: Shows A* search paths (already existed, now enhanced)
+- Add these topics in RViz to visualize the path planning process:
+  - **Marker Array** for `/topo_paths` 
+  - **Marker** for `/a_star_list`
+
+## 2.2. Parameters for New Algorithms
+
+The new algorithms can be tuned via ROS parameters:
+
+**Topological Search Parameters:**
+- `topo/step_size`: Sampling resolution (default: 0.2m)
+- `topo/search_radius`: Obstacle avoidance radius (default: 3.0m)  
+- `topo/max_sample_num`: Maximum sampling points (default: 1000)
+
+**MPPI Parameters:**
+- `mppi/num_samples`: Number of trajectory samples (default: 500)
+- `mppi/horizon_steps`: Planning horizon steps (default: 20)
+- `mppi/dt`: Time discretization (default: 0.1s)
+- `mppi/lambda`: Temperature parameter (default: 1.0)
+- `mppi/sigma_*`: Noise parameters for pos/vel/acc sampling
 
 ## 3. Using an IDE
 We recommend using [vscode](https://code.visualstudio.com/), the project file has been included in the code you have cloned, which is the _.vscode_ folder.
