@@ -106,12 +106,51 @@ vector<TopoPath> TopoPRM::findTopoPaths(const Vector3d& start, const Vector3d& g
     
     ROS_INFO("[TopoPRM] After filtering: %zu obstacles", filtered_obstacles.size());
     
-    // Generate alternative paths for each obstacle
+    // Generate alternative paths using Fast-Planner-inspired approach
     int path_id = 1;
     int total_attempts = 0;
     int valid_paths = 0;
     
+    // For each obstacle, generate multiple alternative paths using different strategies
     for (const auto& obstacle_center : filtered_obstacles) {
+        // Strategy 1: Circle around obstacle (left and right)
+        for (int side = -1; side <= 1; side += 2) {  // -1 for left, 1 for right
+            total_attempts++;
+            vector<Vector3d> alt_path = generateCircularPath(start, goal, obstacle_center, side);
+            if (!alt_path.empty() && isPathValid(alt_path)) {
+                double cost = calculatePathCost(alt_path);
+                paths.emplace_back(alt_path, cost, path_id++);
+                valid_paths++;
+                ROS_DEBUG("[TopoPRM] Generated circular path %d with cost %.3f", path_id-1, cost);
+            }
+        }
+        
+        // Strategy 2: Over/under obstacle (if 3D environment)
+        for (int vertical = -1; vertical <= 1; vertical += 2) {  // -1 for under, 1 for over
+            total_attempts++;
+            vector<Vector3d> alt_path = generateVerticalPath(start, goal, obstacle_center, vertical);
+            if (!alt_path.empty() && isPathValid(alt_path)) {
+                double cost = calculatePathCost(alt_path);
+                paths.emplace_back(alt_path, cost, path_id++);
+                valid_paths++;
+                ROS_DEBUG("[TopoPRM] Generated vertical path %d with cost %.3f", path_id-1, cost);
+            }
+        }
+        
+        // Strategy 3: Tangent paths (Fast-Planner inspired)
+        vector<Vector3d> tangent_points = generateTangentPoints(start, goal, obstacle_center);
+        for (const auto& tangent_pt : tangent_points) {
+            total_attempts++;
+            vector<Vector3d> alt_path = {start, tangent_pt, goal};
+            if (isPathValid(alt_path)) {
+                double cost = calculatePathCost(alt_path);
+                paths.emplace_back(alt_path, cost, path_id++);
+                valid_paths++;
+                ROS_DEBUG("[TopoPRM] Generated tangent path %d with cost %.3f", path_id-1, cost);
+            }
+        }
+        
+        // Fallback: Keep original four-directional approach for compatibility
         for (int direction = 0; direction < 4; ++direction) {
             total_attempts++;
             vector<Vector3d> alt_path = generateAlternativePath(start, goal, 
@@ -364,6 +403,118 @@ void TopoPRM::visualizeTopoPaths(const vector<TopoPath>& paths) {
     ros::Duration(0.01).sleep();
     
     ROS_INFO("[TopoPRM] Published MarkerArray with %zu markers to topic '/topo_paths'", marker_array.markers.size());
+}
+
+// Fast-Planner inspired path generation methods
+
+vector<Vector3d> TopoPRM::generateCircularPath(const Vector3d& start,
+                                              const Vector3d& goal,
+                                              const Vector3d& obstacle_center,
+                                              int side) {
+    vector<Vector3d> path;
+    
+    // Get the direction from start to goal
+    Vector3d start_to_goal = goal - start;
+    Vector3d start_to_obs = obstacle_center - start;
+    
+    // Find perpendicular direction in horizontal plane
+    Vector3d horizontal_perp = start_to_goal.cross(Vector3d(0, 0, 1)).normalized();
+    if (horizontal_perp.norm() < 1e-3) {
+        // Start and goal are vertically aligned, use arbitrary horizontal direction
+        horizontal_perp = Vector3d(1, 0, 0);
+    }
+    
+    // Create waypoint that circles around the obstacle
+    double avoidance_radius = search_radius_ * 1.2;
+    Vector3d waypoint = obstacle_center + side * horizontal_perp * avoidance_radius;
+    
+    // Check if waypoint is collision-free and adjust if necessary
+    bool waypoint_valid = false;
+    for (double radius = avoidance_radius; radius <= avoidance_radius * 2.5; radius += search_radius_ * 0.3) {
+        waypoint = obstacle_center + side * horizontal_perp * radius;
+        if (!grid_map_->getInflateOccupancy(waypoint)) {
+            waypoint_valid = true;
+            break;
+        }
+    }
+    
+    if (!waypoint_valid) {
+        return path; // empty path
+    }
+    
+    path.push_back(start);
+    path.push_back(waypoint);
+    path.push_back(goal);
+    
+    return path;
+}
+
+vector<Vector3d> TopoPRM::generateVerticalPath(const Vector3d& start,
+                                              const Vector3d& goal,
+                                              const Vector3d& obstacle_center,
+                                              int vertical) {
+    vector<Vector3d> path;
+    
+    // Create waypoint above or below the obstacle
+    double vertical_offset = search_radius_ * 1.5 * vertical;
+    Vector3d waypoint = obstacle_center + Vector3d(0, 0, vertical_offset);
+    
+    // Ensure waypoint is at a reasonable height
+    if (waypoint.z() < 0.3) {  // Minimum height above ground
+        waypoint.z() = 0.3;
+    } else if (waypoint.z() > 5.0) {  // Maximum reasonable flight height
+        waypoint.z() = 5.0;
+    }
+    
+    // Check if waypoint is collision-free
+    if (grid_map_->getInflateOccupancy(waypoint)) {
+        return path; // empty path
+    }
+    
+    path.push_back(start);
+    path.push_back(waypoint);
+    path.push_back(goal);
+    
+    return path;
+}
+
+vector<Vector3d> TopoPRM::generateTangentPoints(const Vector3d& start,
+                                               const Vector3d& goal,
+                                               const Vector3d& obstacle_center) {
+    vector<Vector3d> tangent_points;
+    
+    // Get the direction from obstacle to start and goal
+    Vector3d obs_to_start = (start - obstacle_center).normalized();
+    Vector3d obs_to_goal = (goal - obstacle_center).normalized();
+    
+    // Calculate tangent points around the obstacle
+    double obstacle_radius = search_radius_ * 0.8;
+    
+    // Generate multiple tangent points around the obstacle
+    for (int i = 0; i < 8; ++i) {  // 8 directions around obstacle
+        double angle = i * M_PI / 4.0;  // 45-degree increments
+        
+        // Rotate the vector from obstacle to start by the angle
+        Vector3d tangent_dir(
+            cos(angle) * obs_to_start.x() - sin(angle) * obs_to_start.y(),
+            sin(angle) * obs_to_start.x() + cos(angle) * obs_to_start.y(),
+            obs_to_start.z()
+        );
+        
+        Vector3d tangent_point = obstacle_center + tangent_dir * (obstacle_radius + search_radius_ * 0.5);
+        
+        // Check if this tangent point makes sense geometrically
+        double dist_to_start = (tangent_point - start).norm();
+        double dist_to_goal = (tangent_point - goal).norm();
+        double direct_dist = (goal - start).norm();
+        
+        // Only add if it's not too much longer than direct path
+        if (dist_to_start + dist_to_goal < direct_dist * 2.0) {
+            tangent_points.push_back(tangent_point);
+        }
+    }
+    
+    return tangent_points;
 }
 
 } // namespace ego_planner

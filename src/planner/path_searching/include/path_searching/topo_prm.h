@@ -43,11 +43,26 @@ private:
     bool isPathValid(const std::vector<Eigen::Vector3d>& path);
     bool isLineCollisionFree(const Eigen::Vector3d& start, const Eigen::Vector3d& end);
     
-    // Four-directional obstacle avoidance
+    // Four-directional obstacle avoidance (legacy)
     std::vector<Eigen::Vector3d> generateAlternativePath(const Eigen::Vector3d& start,
                                                         const Eigen::Vector3d& goal,
                                                         const Eigen::Vector3d& obstacle_center,
                                                         int direction); // 0=up, 1=down, 2=left, 3=right
+    
+    // Fast-Planner inspired path generation methods
+    std::vector<Eigen::Vector3d> generateCircularPath(const Eigen::Vector3d& start,
+                                                     const Eigen::Vector3d& goal,
+                                                     const Eigen::Vector3d& obstacle_center,
+                                                     int side); // -1=left, 1=right
+    
+    std::vector<Eigen::Vector3d> generateVerticalPath(const Eigen::Vector3d& start,
+                                                     const Eigen::Vector3d& goal,
+                                                     const Eigen::Vector3d& obstacle_center,
+                                                     int vertical); // -1=under, 1=over
+    
+    std::vector<Eigen::Vector3d> generateTangentPoints(const Eigen::Vector3d& start,
+                                                      const Eigen::Vector3d& goal,
+                                                      const Eigen::Vector3d& obstacle_center);
     
     // Cost calculation
     double calculatePathCost(const std::vector<Eigen::Vector3d>& path);
