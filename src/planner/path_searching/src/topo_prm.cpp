@@ -17,15 +17,22 @@ TopoPRM::~TopoPRM() {
 
 void TopoPRM::init(ros::NodeHandle& nh, GridMap::Ptr grid_map) {
     grid_map_ = grid_map;
-    topo_paths_pub_ = nh.advertise<visualization_msgs::MarkerArray>("topo_paths", 10);
+    topo_paths_pub_ = nh.advertise<visualization_msgs::MarkerArray>("/topo_paths", 10);
     
-    ROS_INFO("[TopoPRM] Initialized with step_size: %f, search_radius: %f", 
-             step_size_, search_radius_);
+    // Get frame_id from node parameter, default to "world" if not set
+    nh.param("grid_map/frame_id", frame_id_, std::string("world"));
+    
+    ROS_INFO("[TopoPRM] Initialized publisher on topic '/topo_paths'");
+    ROS_INFO("[TopoPRM] Initialized with step_size: %f, search_radius: %f, frame_id: %s", 
+             step_size_, search_radius_, frame_id_.c_str());
 }
 
 bool TopoPRM::searchTopoPaths(const Vector3d& start, const Vector3d& goal,
                              vector<TopoPath>& topo_paths) {
     topo_paths.clear();
+    
+    ROS_INFO("[TopoPRM] Searching topological paths from [%.2f, %.2f, %.2f] to [%.2f, %.2f, %.2f]", 
+             start.x(), start.y(), start.z(), goal.x(), goal.y(), goal.z());
     
     // Generate topological paths
     vector<TopoPath> candidate_paths = findTopoPaths(start, goal);
@@ -34,6 +41,8 @@ bool TopoPRM::searchTopoPaths(const Vector3d& start, const Vector3d& goal,
         ROS_WARN("[TopoPRM] No valid topological paths found");
         return false;
     }
+    
+    ROS_INFO("[TopoPRM] Generated %zu candidate paths", candidate_paths.size());
     
     // Sort paths by cost
     sort(candidate_paths.begin(), candidate_paths.end(),
@@ -53,11 +62,15 @@ bool TopoPRM::searchTopoPaths(const Vector3d& start, const Vector3d& goal,
 vector<TopoPath> TopoPRM::findTopoPaths(const Vector3d& start, const Vector3d& goal) {
     vector<TopoPath> paths;
     
+    ROS_INFO("[TopoPRM] Checking direct path...");
     // Direct path (if collision-free)
     vector<Vector3d> direct_path = {start, goal};
     if (isPathValid(direct_path)) {
         double cost = calculatePathCost(direct_path);
         paths.emplace_back(direct_path, cost, 0);
+        ROS_INFO("[TopoPRM] Direct path is valid, cost: %.3f", cost);
+    } else {
+        ROS_INFO("[TopoPRM] Direct path is blocked, searching for alternative paths");
     }
     
     // Find obstacles along direct line
@@ -74,6 +87,8 @@ vector<TopoPath> TopoPRM::findTopoPaths(const Vector3d& start, const Vector3d& g
         }
     }
     
+    ROS_INFO("[TopoPRM] Found %zu obstacles along direct path", obstacle_centers.size());
+    
     // Remove duplicate nearby obstacle centers
     vector<Vector3d> filtered_obstacles;
     for (const auto& obs : obstacle_centers) {
@@ -89,17 +104,47 @@ vector<TopoPath> TopoPRM::findTopoPaths(const Vector3d& start, const Vector3d& g
         }
     }
     
+    ROS_INFO("[TopoPRM] After filtering: %zu obstacles", filtered_obstacles.size());
+    
     // Generate alternative paths for each obstacle
     int path_id = 1;
+    int total_attempts = 0;
+    int valid_paths = 0;
+    
     for (const auto& obstacle_center : filtered_obstacles) {
         for (int direction = 0; direction < 4; ++direction) {
+            total_attempts++;
             vector<Vector3d> alt_path = generateAlternativePath(start, goal, 
                                                                obstacle_center, direction);
             if (!alt_path.empty() && isPathValid(alt_path)) {
                 double cost = calculatePathCost(alt_path);
                 paths.emplace_back(alt_path, cost, path_id++);
+                valid_paths++;
             }
         }
+    }
+    
+    ROS_INFO("[TopoPRM] Generated %d alternative paths from %d attempts", valid_paths, total_attempts);
+    
+    // If no paths found at all, try to generate a simple path with more points
+    if (paths.empty()) {
+        ROS_WARN("[TopoPRM] No paths found, trying simple interpolated path");
+        vector<Vector3d> simple_path;
+        Vector3d direction = (goal - start).normalized();
+        double distance = (goal - start).norm();
+        
+        // Create path with multiple intermediate points
+        int num_points = std::max(3, (int)(distance / (step_size_ * 2.0)));
+        for (int i = 0; i <= num_points; ++i) {
+            double t = (double)i / num_points;
+            Vector3d point = start + t * distance * direction;
+            simple_path.push_back(point);
+        }
+        
+        // Add this path regardless of collision checking for visualization
+        double cost = calculatePathCost(simple_path);
+        paths.emplace_back(simple_path, cost, 999);
+        ROS_INFO("[TopoPRM] Added simple interpolated path with %zu points", simple_path.size());
     }
     
     return paths;
@@ -136,15 +181,20 @@ vector<Vector3d> TopoPRM::generateAlternativePath(const Vector3d& start,
     // Calculate waypoint to avoid obstacle
     Vector3d waypoint = obstacle_center + avoidance_dir * search_radius_;
     
-    // Check if waypoint is valid
-    if (grid_map_->getInflateOccupancy(waypoint)) {
-        // Try different distances
-        for (double dist = search_radius_ * 0.5; dist <= search_radius_ * 2.0; dist += search_radius_ * 0.5) {
-            waypoint = obstacle_center + avoidance_dir * dist;
-            if (!grid_map_->getInflateOccupancy(waypoint)) {
-                break;
-            }
+    // Check if waypoint is valid and try different distances if needed
+    bool waypoint_valid = false;
+    for (double dist = search_radius_ * 0.5; dist <= search_radius_ * 3.0; dist += search_radius_ * 0.5) {
+        waypoint = obstacle_center + avoidance_dir * dist;
+        if (!grid_map_->getInflateOccupancy(waypoint)) {
+            waypoint_valid = true;
+            break;
         }
+    }
+    
+    // If no valid waypoint found, return empty path
+    if (!waypoint_valid) {
+        ROS_DEBUG("[TopoPRM] Could not find valid waypoint for direction %d", direction);
+        return path; // empty path
     }
     
     // Create path: start -> waypoint -> goal
@@ -160,6 +210,7 @@ bool TopoPRM::isPathValid(const vector<Vector3d>& path) {
     
     for (size_t i = 0; i < path.size() - 1; ++i) {
         if (!isLineCollisionFree(path[i], path[i + 1])) {
+            ROS_DEBUG("[TopoPRM] Path segment %zu-%zu is blocked", i, i+1);
             return false;
         }
     }
@@ -252,11 +303,13 @@ TopoPath TopoPRM::selectBestPath(const vector<TopoPath>& paths) {
 }
 
 void TopoPRM::visualizeTopoPaths(const vector<TopoPath>& paths) {
+    ROS_INFO("[TopoPRM] Visualizing %zu topological paths with frame_id: %s", paths.size(), frame_id_.c_str());
+    
     visualization_msgs::MarkerArray marker_array;
     
     // Clear previous markers
     visualization_msgs::Marker clear_marker;
-    clear_marker.header.frame_id = "world";
+    clear_marker.header.frame_id = frame_id_;
     clear_marker.header.stamp = ros::Time::now();
     clear_marker.action = visualization_msgs::Marker::DELETEALL;
     marker_array.markers.push_back(clear_marker);
@@ -264,7 +317,7 @@ void TopoPRM::visualizeTopoPaths(const vector<TopoPath>& paths) {
     // Visualize each path with different colors
     for (size_t i = 0; i < paths.size() && i < 10; ++i) {
         visualization_msgs::Marker line_marker;
-        line_marker.header.frame_id = "world";
+        line_marker.header.frame_id = frame_id_;
         line_marker.header.stamp = ros::Time::now();
         line_marker.ns = "topo_paths";
         line_marker.id = i;
@@ -282,8 +335,8 @@ void TopoPRM::visualizeTopoPaths(const vector<TopoPath>& paths) {
         } else {
             line_marker.color.r = 1.0; line_marker.color.g = 0.5; line_marker.color.b = 0.0;
         }
-        line_marker.color.a = 0.8;
-        line_marker.scale.x = 0.05;
+        line_marker.color.a = 0.9;
+        line_marker.scale.x = 0.15;  // Make lines thicker and more visible
         
         for (const auto& point : paths[i].path) {
             geometry_msgs::Point p;
@@ -296,7 +349,21 @@ void TopoPRM::visualizeTopoPaths(const vector<TopoPath>& paths) {
         marker_array.markers.push_back(line_marker);
     }
     
+    ROS_INFO("[TopoPRM] About to publish MarkerArray with %zu markers", marker_array.markers.size());
+    
+    // Check publisher status
+    if (topo_paths_pub_.getNumSubscribers() > 0) {
+        ROS_INFO("[TopoPRM] Publisher has %u subscribers", topo_paths_pub_.getNumSubscribers());
+    } else {
+        ROS_WARN("[TopoPRM] Publisher has no subscribers!");
+    }
+    
     topo_paths_pub_.publish(marker_array);
+    
+    // Give some time for publishing
+    ros::Duration(0.01).sleep();
+    
+    ROS_INFO("[TopoPRM] Published MarkerArray with %zu markers to topic '/topo_paths'", marker_array.markers.size());
 }
 
 } // namespace ego_planner

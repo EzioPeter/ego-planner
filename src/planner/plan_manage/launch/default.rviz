@@ -124,6 +124,14 @@ Visualization Manager:
           Topic: /odom_visualization/path
           Unreliable: false
           Value: true
+        - Class: rviz/MarkerArray
+          Enabled: true
+          Marker Topic: /topo_paths
+          Name: Topological_Paths
+          Namespaces:
+            topo_paths: true
+          Queue Size: 100
+          Value: true
       Enabled: true
       Name: Planning
     - Class: rviz/Group

@@ -28,6 +28,7 @@ class TopoPRM {
 private:
     GridMap::Ptr grid_map_;
     ros::Publisher topo_paths_pub_;
+    std::string frame_id_;
     
     // Parameters
     double step_size_;

@@ -241,6 +241,19 @@ namespace ego_planner
     visualization_->displayInitPathList(point_set, 0.2, 0);
     visualization_->displayAStarList(a_star_pathes, vis_id);
 
+    /*** STEP 1.5: TOPOLOGICAL PLANNING ***/
+    std::vector<TopoPath> topo_paths;
+    ROS_INFO("[PlannerManager] Attempting topological planning from [%.2f, %.2f, %.2f] to [%.2f, %.2f, %.2f]", 
+             start_pt.x(), start_pt.y(), start_pt.z(), 
+             local_target_pt.x(), local_target_pt.y(), local_target_pt.z());
+    
+    if (planWithTopo(start_pt, local_target_pt, topo_paths)) {
+        ROS_INFO("[PlannerManager] Found %zu topological paths", topo_paths.size());
+        // Visualization is already handled in planWithTopo
+    } else {
+        ROS_WARN("[PlannerManager] Topological planning failed, continuing with original approach");
+    }
+
     t_start = ros::Time::now();
 
     /*** STEP 2: OPTIMIZE ***/
