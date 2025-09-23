@@ -325,8 +325,8 @@ namespace ego_planner
         UniformBspline temp_spline(ctrl_pts, 3, ts);
         
         // Use MPPI to refine the trajectory locally
-        Vector3d current_vel = start_vel;
-        Vector3d target_vel = local_target_vel;
+        Eigen::Vector3d current_vel = start_vel;
+        Eigen::Vector3d target_vel = local_target_vel;
         
         MPPITrajectory mppi_result;
         bool mppi_success = planWithMPPI(start_pt, current_vel, local_target_pt, target_vel, mppi_result);
@@ -342,7 +342,7 @@ namespace ego_planner
             ROS_WARN("[PlannerManager] MPPI optimization failed, using B-spline result only");
         }
         
-        ros::Time mppi_time = ros::Time::now() - t_start;
+        ros::Duration mppi_time = ros::Time::now() - t_start;
         ROS_INFO("[PlannerManager] MPPI optimization took %.3f ms", mppi_time.toSec() * 1000.0);
     }
 
