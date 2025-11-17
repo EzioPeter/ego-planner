@@ -1,4 +1,6 @@
 # Note!
+This is a ego planner version for ground robots, such ackermann vehicles, quadruped robots etc. The default branch "main" is the origin version for quadrotors.  
+
 Our recently developed planner [EGO-Swarm](https://github.com/ZJU-FAST-Lab/ego-planner-swarm) is an evolution from EGO-Planner. 
 It is more robust and safe, and therefore, is more recommended to use.
 If you have only one drone, just set the `drone_id` to `0` in EGO-Swarm's launch files.
