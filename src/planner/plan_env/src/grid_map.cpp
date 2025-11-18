@@ -88,10 +88,16 @@ void GridMap::initMap(ros::NodeHandle &nh)
 
   md_.proj_points_.resize(640 * 480 / mp_.skip_pixel_ / mp_.skip_pixel_);
   md_.proj_points_cnt = 0;
-  md_.cam2body_ << 0.0, 0.0, 1.0, 0.0,
-      -1.0, 0.0, 0.0, 0.0,
-      0.0, -1.0, 0.0, -0.02,
-      0.0, 0.0, 0.0, 1.0;
+  // md_.cam2body_ << 0.0, 0.0, 1.0, 0.0,
+  //     -1.0, 0.0, 0.0, 0.0,
+  //     0.0, -1.0, 0.0, -0.02,
+  //     0.0, 0.0, 0.0, 1.0;
+
+
+  md_.cam2body_ << 1.0, 0.0, 0.0, 0.0,
+                  0.0, 1.0, 0.0, 0.0,
+                  0.0, 0.0, 1.0, 0.0,
+                  0.0, 0.0, 0.0, 1.0;
 
   /* init callback */
 
@@ -108,7 +114,7 @@ void GridMap::initMap(ros::NodeHandle &nh)
   }
   else if (mp_.pose_type_ == ODOMETRY)
   {
-    odom_sub_.reset(new message_filters::Subscriber<nav_msgs::Odometry>(node_, "/grid_map/odom", 100));
+    odom_sub_.reset(new message_filters::Subscriber<nav_msgs::Odometry>(node_, "/legOdom", 100));
 
     sync_image_odom_.reset(new message_filters::Synchronizer<SyncPolicyImageOdom>(
         SyncPolicyImageOdom(100), *depth_sub_, *odom_sub_));
@@ -117,9 +123,9 @@ void GridMap::initMap(ros::NodeHandle &nh)
 
   // use odometry and point cloud
   indep_cloud_sub_ =
-      node_.subscribe<sensor_msgs::PointCloud2>("/grid_map/cloud", 10, &GridMap::cloudCallback, this);
+      node_.subscribe<sensor_msgs::PointCloud2>("/velodyne_points", 10, &GridMap::cloudCallback, this);
   indep_odom_sub_ =
-      node_.subscribe<nav_msgs::Odometry>("/grid_map/odom", 10, &GridMap::odomCallback, this);
+      node_.subscribe<nav_msgs::Odometry>("/legOdom", 10, &GridMap::odomCallback, this);
 
   occ_timer_ = node_.createTimer(ros::Duration(0.05), &GridMap::updateOccupancyCallback, this);
   vis_timer_ = node_.createTimer(ros::Duration(0.05), &GridMap::visCallback, this);
@@ -659,7 +665,7 @@ void GridMap::updateOccupancyCallback(const ros::TimerEvent & /*event*/)
   // ros::Time t1, t2, t3, t4;
   // t1 = ros::Time::now();
 
-  projectDepthImage();
+  // projectDepthImage();
   // t2 = ros::Time::now();
   raycastProcess();
   // t3 = ros::Time::now();
@@ -720,15 +726,44 @@ void GridMap::odomCallback(const nav_msgs::OdometryConstPtr &odom)
   if (md_.has_first_depth_)
     return;
 
-  md_.camera_pos_(0) = odom->pose.pose.position.x;
-  md_.camera_pos_(1) = odom->pose.pose.position.y;
-  md_.camera_pos_(2) = odom->pose.pose.position.z;
+  // md_.camera_pos_(0) = odom->pose.pose.position.x;
+  // md_.camera_pos_(1) = odom->pose.pose.position.y;
+  // md_.camera_pos_(2) = odom->pose.pose.position.z;
+
+  /* get pose */
+  Eigen::Quaterniond body_q = Eigen::Quaterniond(odom->pose.pose.orientation.w,
+                                                 odom->pose.pose.orientation.x,
+                                                 odom->pose.pose.orientation.y,
+                                                 odom->pose.pose.orientation.z);
+
+  Eigen::Matrix3d body_r_m = body_q.toRotationMatrix();
+  Eigen::Matrix4d body2world;
+  body2world.block<3, 3>(0, 0) = body_r_m;
+  body2world(0, 3) = odom->pose.pose.position.x;
+  body2world(1, 3) = odom->pose.pose.position.y;
+  body2world(2, 3) = odom->pose.pose.position.z;
+  body2world(3, 3) = 1.0;
+
+  Eigen::Matrix4d cam_T = body2world * md_.cam2body_;
+  md_.camera_pos_(0) = cam_T(0, 3);
+  md_.camera_pos_(1) = cam_T(1, 3);
+  md_.camera_pos_(2) = cam_T(2, 3);
+  md_.camera_r_m_ = cam_T.block<3, 3>(0, 0);
+
 
   md_.has_odom_ = true;
+  md_.local_updated_ = true;
 }
 
 void GridMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr &img)
 {
+  md_.occupancy_buffer_ .clear();
+  md_.occupancy_buffer_inflate_.clear();
+
+  md_.count_hit_and_miss_.clear();
+  md_.count_hit_.clear();
+  md_.flag_rayend_.clear();
+  md_.flag_traverse_.clear();
 
   pcl::PointCloud<pcl::PointXYZ> latest_cloud;
   pcl::fromROSMsg(*img, latest_cloud);
@@ -768,8 +803,17 @@ void GridMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr &img)
 
   for (size_t i = 0; i < latest_cloud.points.size(); ++i)
   {
-    pt = latest_cloud.points[i];
-    p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;
+    // pt = latest_cloud.points[i];
+    // p3d(0) = pt.x, p3d(1) = pt.y, p3d(2) = pt.z;
+    Eigen::Vector3d pt_raw;
+    pt_raw(0) = latest_cloud.points[i].x;
+    pt_raw(1) = latest_cloud.points[i].y;
+    pt_raw(2) = latest_cloud.points[i].z;
+
+    p3d = md_.camera_r_m_ * pt_raw + md_.camera_pos_;
+    pt.x = p3d(0);
+    pt.y = p3d(1);
+    pt.z = p3d(2);
 
     /* point inside update range */
     Eigen::Vector3d devi = p3d - md_.camera_pos_;

@@ -93,6 +93,7 @@ struct MappingData {
   // camera position and pose data
 
   Eigen::Vector3d camera_pos_, last_camera_pos_;
+  Eigen::Matrix3d camera_r_m_, last_camera_r_m_;
   Eigen::Quaterniond camera_q_, last_camera_q_;
 
   // depth image data
