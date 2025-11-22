@@ -298,14 +298,9 @@ void odometryCallback(const nav_msgs::OdometryConstPtr &msg)
 
   robot_yaw_world_ =q.matrix().eulerAngles(2,1,0)(0);
 
-  // odom_vel(0) = msg->twist.twist.linear.x;
-  // odom_vel(1) = msg->twist.twist.linear.y;
-  // odom_vel(2) = msg->twist.twist.angular.z;
-
-  // need to comment out in application
-  odom_vel(0) = -0.02;
-  odom_vel(1) = -0.008;
-  odom_vel(2) = 0;
+  odom_vel(0) = msg->twist.twist.linear.x;
+  odom_vel(1) = msg->twist.twist.linear.y;
+  odom_vel(2) = msg->twist.twist.angular.z;
 }
 
 double LimitSpeed(const double vel_input,const double upper,const double lower)
