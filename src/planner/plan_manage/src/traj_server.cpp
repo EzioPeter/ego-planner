@@ -324,7 +324,7 @@ int main(int argc, char **argv)
 
   ros::Subscriber bspline_sub = node.subscribe("planning/bspline", 10, bsplineCallback);
 
-  ros::Subscriber legOdom_sub = node.subscribe("legOdom", 10, odometryCallback);
+  ros::Subscriber legOdom_sub = node.subscribe("Odometry", 10, odometryCallback);
 
   ros::Subscriber goFlagSub = node.subscribe("ego_planner_node/go_flag", 10, goFlagCallback);
 

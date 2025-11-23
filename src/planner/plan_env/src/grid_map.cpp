@@ -114,7 +114,7 @@ void GridMap::initMap(ros::NodeHandle &nh)
   }
   else if (mp_.pose_type_ == ODOMETRY)
   {
-    odom_sub_.reset(new message_filters::Subscriber<nav_msgs::Odometry>(node_, "/legOdom", 100));
+    odom_sub_.reset(new message_filters::Subscriber<nav_msgs::Odometry>(node_, "/Odometry", 100));
 
     sync_image_odom_.reset(new message_filters::Synchronizer<SyncPolicyImageOdom>(
         SyncPolicyImageOdom(100), *depth_sub_, *odom_sub_));
@@ -123,9 +123,9 @@ void GridMap::initMap(ros::NodeHandle &nh)
 
   // use odometry and point cloud
   indep_cloud_sub_ =
-      node_.subscribe<sensor_msgs::PointCloud2>("/velodyne_points", 10, &GridMap::cloudCallback, this);
+      node_.subscribe<sensor_msgs::PointCloud2>("/cloud_registered", 10, &GridMap::cloudCallback, this);
   indep_odom_sub_ =
-      node_.subscribe<nav_msgs::Odometry>("/legOdom", 10, &GridMap::odomCallback, this);
+      node_.subscribe<nav_msgs::Odometry>("/Odometry", 10, &GridMap::odomCallback, this);
 
   occ_timer_ = node_.createTimer(ros::Duration(0.05), &GridMap::updateOccupancyCallback, this);
   vis_timer_ = node_.createTimer(ros::Duration(0.05), &GridMap::visCallback, this);

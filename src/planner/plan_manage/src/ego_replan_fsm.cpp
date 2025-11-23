@@ -39,7 +39,7 @@ namespace ego_planner
 
     goFlagPub_ = nh.advertise<std_msgs::Int16>("go_flag",10);
 
-    odom_sub_ = nh.subscribe("/legOdom", 1, &EGOReplanFSM::odometryCallback, this);
+    odom_sub_ = nh.subscribe("/Odometry", 1, &EGOReplanFSM::odometryCallback, this);
 
     bspline_pub_ = nh.advertise<ego_planner::Bspline>("/planning/bspline", 10);
     data_disp_pub_ = nh.advertise<ego_planner::DataDisp>("/planning/data_display", 100);
