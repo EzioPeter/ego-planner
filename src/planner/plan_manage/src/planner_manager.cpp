@@ -72,8 +72,8 @@ namespace ego_planner
       start_end_derivatives.clear();
       flag_regenerate = false;
 
-      if (flag_first_call || flag_polyInit || flag_force_polynomial /*|| ( start_pt - local_target_pt ).norm() < 1.0*/) // Initial path generated from a min-snap traj by order.
-      {
+      // if (flag_first_call || flag_polyInit || flag_force_polynomial /*|| ( start_pt - local_target_pt ).norm() < 1.0*/) // Initial path generated from a min-snap traj by order.
+      // {
         flag_first_call = false;
         flag_force_polynomial = false;
 
@@ -128,84 +128,84 @@ namespace ego_planner
         start_end_derivatives.push_back(local_target_vel);
         start_end_derivatives.push_back(gl_traj.evaluateAcc(0));
         start_end_derivatives.push_back(gl_traj.evaluateAcc(t));
-      }
-      else // Initial path generated from previous trajectory.
-      {
+      // }
+      // else // Initial path generated from previous trajectory.
+      // {
 
-        double t;
-        double t_cur = (ros::Time::now() - local_data_.start_time_).toSec();
+      //   double t;
+      //   double t_cur = (ros::Time::now() - local_data_.start_time_).toSec();
 
-        vector<double> pseudo_arc_length;
-        vector<Eigen::Vector3d> segment_point;
-        pseudo_arc_length.push_back(0.0);
-        for (t = t_cur; t < local_data_.duration_ + 1e-3; t += ts)
-        {
-          segment_point.push_back(local_data_.position_traj_.evaluateDeBoorT(t));
-          if (t > t_cur)
-          {
-            pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
-          }
-        }
-        t -= ts;
+      //   vector<double> pseudo_arc_length;
+      //   vector<Eigen::Vector3d> segment_point;
+      //   pseudo_arc_length.push_back(0.0);
+      //   for (t = t_cur; t < local_data_.duration_ + 1e-3; t += ts)
+      //   {
+      //     segment_point.push_back(local_data_.position_traj_.evaluateDeBoorT(t));
+      //     if (t > t_cur)
+      //     {
+      //       pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
+      //     }
+      //   }
+      //   t -= ts;
 
-        double poly_time = (local_data_.position_traj_.evaluateDeBoorT(t) - local_target_pt).norm() / pp_.max_vel_ * 2;
-        if (poly_time > ts)
-        {
-          PolynomialTraj gl_traj = PolynomialTraj::one_segment_traj_gen(local_data_.position_traj_.evaluateDeBoorT(t),
-                                                                        local_data_.velocity_traj_.evaluateDeBoorT(t),
-                                                                        local_data_.acceleration_traj_.evaluateDeBoorT(t),
-                                                                        local_target_pt, local_target_vel, Eigen::Vector3d::Zero(), poly_time);
+      //   double poly_time = (local_data_.position_traj_.evaluateDeBoorT(t) - local_target_pt).norm() / pp_.max_vel_ * 2;
+      //   if (poly_time > ts)
+      //   {
+      //     PolynomialTraj gl_traj = PolynomialTraj::one_segment_traj_gen(local_data_.position_traj_.evaluateDeBoorT(t),
+      //                                                                   local_data_.velocity_traj_.evaluateDeBoorT(t),
+      //                                                                   local_data_.acceleration_traj_.evaluateDeBoorT(t),
+      //                                                                   local_target_pt, local_target_vel, Eigen::Vector3d::Zero(), poly_time);
 
-          for (t = ts; t < poly_time; t += ts)
-          {
-            if (!pseudo_arc_length.empty())
-            {
-              segment_point.push_back(gl_traj.evaluate(t));
-              pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
-            }
-            else
-            {
-              ROS_ERROR("pseudo_arc_length is empty, return!");
-              continous_failures_count_++;
-              return false;
-            }
-          }
-        }
+      //     for (t = ts; t < poly_time; t += ts)
+      //     {
+      //       if (!pseudo_arc_length.empty())
+      //       {
+      //         segment_point.push_back(gl_traj.evaluate(t));
+      //         pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
+      //       }
+      //       else
+      //       {
+      //         ROS_ERROR("pseudo_arc_length is empty, return!");
+      //         continous_failures_count_++;
+      //         return false;
+      //       }
+      //     }
+      //   }
 
-        double sample_length = 0;
-        double cps_dist = pp_.ctrl_pt_dist * 1.5; // cps_dist will be divided by 1.5 in the next
-        size_t id = 0;
-        do
-        {
-          cps_dist /= 1.5;
-          point_set.clear();
-          sample_length = 0;
-          id = 0;
-          while ((id <= pseudo_arc_length.size() - 2) && sample_length <= pseudo_arc_length.back())
-          {
-            if (sample_length >= pseudo_arc_length[id] && sample_length < pseudo_arc_length[id + 1])
-            {
-              point_set.push_back((sample_length - pseudo_arc_length[id]) / (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id + 1] +
-                                  (pseudo_arc_length[id + 1] - sample_length) / (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id]);
-              sample_length += cps_dist;
-            }
-            else
-              id++;
-          }
-          point_set.push_back(local_target_pt);
-        } while (point_set.size() < 7); // If the start point is very close to end point, this will help
+      //   double sample_length = 0;
+      //   double cps_dist = pp_.ctrl_pt_dist * 1.5; // cps_dist will be divided by 1.5 in the next
+      //   size_t id = 0;
+      //   do
+      //   {
+      //     cps_dist /= 1.5;
+      //     point_set.clear();
+      //     sample_length = 0;
+      //     id = 0;
+      //     while ((id <= pseudo_arc_length.size() - 2) && sample_length <= pseudo_arc_length.back())
+      //     {
+      //       if (sample_length >= pseudo_arc_length[id] && sample_length < pseudo_arc_length[id + 1])
+      //       {
+      //         point_set.push_back((sample_length - pseudo_arc_length[id]) / (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id + 1] +
+      //                             (pseudo_arc_length[id + 1] - sample_length) / (pseudo_arc_length[id + 1] - pseudo_arc_length[id]) * segment_point[id]);
+      //         sample_length += cps_dist;
+      //       }
+      //       else
+      //         id++;
+      //     }
+      //     point_set.push_back(local_target_pt);
+      //   } while (point_set.size() < 7); // If the start point is very close to end point, this will help
 
-        start_end_derivatives.push_back(local_data_.velocity_traj_.evaluateDeBoorT(t_cur));
-        start_end_derivatives.push_back(local_target_vel);
-        start_end_derivatives.push_back(local_data_.acceleration_traj_.evaluateDeBoorT(t_cur));
-        start_end_derivatives.push_back(Eigen::Vector3d::Zero());
+      //   start_end_derivatives.push_back(local_data_.velocity_traj_.evaluateDeBoorT(t_cur));
+      //   start_end_derivatives.push_back(local_target_vel);
+      //   start_end_derivatives.push_back(local_data_.acceleration_traj_.evaluateDeBoorT(t_cur));
+      //   start_end_derivatives.push_back(Eigen::Vector3d::Zero());
 
-        if (point_set.size() > pp_.planning_horizen_ / pp_.ctrl_pt_dist * 3) // The initial path is unnormally too long!
-        {
-          flag_force_polynomial = true;
-          flag_regenerate = true;
-        }
-      }
+      //   if (point_set.size() > pp_.planning_horizen_ / pp_.ctrl_pt_dist * 3) // The initial path is unnormally too long!
+      //   {
+      //     flag_force_polynomial = true;
+      //     flag_regenerate = true;
+      //   }
+      // }
     } while (flag_regenerate);
 
     Eigen::MatrixXd ctrl_pts;
@@ -227,11 +227,11 @@ namespace ego_planner
     cout << "first_optimize_step_success=" << flag_step_1_success << endl;
     if (!flag_step_1_success)
     {
-      // visualization_->displayOptimalList( ctrl_pts, vis_id );
+      visualization_->displayOptimalList( ctrl_pts, vis_id );
       continous_failures_count_++;
       return false;
     }
-    //visualization_->displayOptimalList( ctrl_pts, vis_id );
+    visualization_->displayOptimalList( ctrl_pts, vis_id );
 
     t_opt = ros::Time::now() - t_start;
     t_start = ros::Time::now();

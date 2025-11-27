@@ -17,6 +17,7 @@
 #include <ego_planner/DataDisp.h>
 #include <plan_manage/planner_manager.h>
 #include <traj_utils/planning_visualization.h>
+#include <std_msgs/Int16.h>
 
 using std::vector;
 
@@ -59,6 +60,8 @@ namespace ego_planner
 
     /* planning data */
     bool trigger_, have_target_, have_odom_, have_new_target_;
+    std_msgs::Int16 goFlag_;
+    ros::Publisher goFlagPub_;
     FSM_EXEC_STATE exec_state_;
     int continously_called_times_{0};
 
@@ -74,7 +77,7 @@ namespace ego_planner
 
     /* ROS utils */
     ros::NodeHandle node_;
-    ros::Timer exec_timer_, safety_timer_;
+    ros::Timer exec_timer_, safety_timer_, go_timer_;
     ros::Subscriber waypoint_sub_, odom_sub_;
     ros::Publisher replan_pub_, new_pub_, bspline_pub_, data_disp_pub_;
 
@@ -94,6 +97,8 @@ namespace ego_planner
     /* ROS functions */
     void execFSMCallback(const ros::TimerEvent &e);
     void checkCollisionCallback(const ros::TimerEvent &e);
+    void goFlagCallback(const ros::TimerEvent &e);
+    
     void waypointCallback(const nav_msgs::PathConstPtr &msg);
     void odometryCallback(const nav_msgs::OdometryConstPtr &msg);
 
