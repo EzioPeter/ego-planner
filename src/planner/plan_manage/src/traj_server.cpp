@@ -109,7 +109,7 @@ std::pair<double, double> calculate_yaw(double t_cur, Eigen::Vector3d &pos, ros:
   double yaw_control_point = tf::getYaw(control_point_state.pose.pose.orientation);
   double yaw_robot = tf::getYaw(odom_Pose.orientation);
 
-  double yaw_diff = yaw_control_point- yaw_robot;
+  double yaw_diff = yaw_control_point- yaw_robot+ 0.5 * PI;
   if (yaw_diff > PI) yaw_diff = yaw_diff - 2 * PI;
   else if (yaw_diff < -PI) yaw_diff = yaw_diff + 2 * PI;
   yaw_yawdot.first = yaw_diff;
