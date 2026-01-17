@@ -298,22 +298,6 @@ namespace ego_planner
 
     case EXEC_TRAJ:
     {
-      /* determine if need to replan */
-      // LocalTrajData *info = &planner_manager_->local_data_;
-      // ros::Time time_now = ros::Time::now();
-      // double t_cur = (time_now - info->start_time_).toSec();
-      // t_cur = min(info->duration_, t_cur);
-
-      // Eigen::Vector3d pos = info->position_traj_.evaluateDeBoorT(t_cur);
-
-      // /* && (end_pt_ - pos).norm() < 0.5 */
-      // if (t_cur > info->duration_ - 1e-2)
-      // {
-      //   have_target_ = false;
-
-      //   changeFSMExecState(WAIT_TARGET, "FSM");
-      //   return;
-      // }
       cout << "Executing... "<< endl;
       Eigen::Vector3d pos = odom_pos_;
       if ((end_pt_ - pos).norm() < no_replan_thresh_)
@@ -323,11 +307,6 @@ namespace ego_planner
         changeFSMExecState(WAIT_TARGET, "FSM");
         return;
       }
-      // else if ((info->start_pos_ - pos).norm() < replan_thresh_)
-      // {
-      //   // cout << "near start" << endl;
-      //   return;
-      // }
       else
       {
         changeFSMExecState(REPLAN_TRAJ, "FSM");
@@ -418,20 +397,6 @@ namespace ego_planner
           changeFSMExecState(EXEC_TRAJ, "SAFETY");
           return;
         }
-        // else
-        // {
-        //   if (t - t_cur < emergency_time_) // 0.8s of emergency time
-        //   {
-        //     ROS_WARN("Suddenly discovered obstacles. emergency stop! time=%f", t - t_cur);
-        //     changeFSMExecState(EMERGENCY_STOP, "SAFETY");
-        //   }
-        //   else
-        //   {
-        //     //ROS_WARN("current traj in collision, replan.");
-        //     changeFSMExecState(REPLAN_TRAJ, "SAFETY");
-        //   }
-        //   return;
-        // }
         break;
       }
     }
