@@ -5,7 +5,7 @@
   <arg name="map_size_z" value=" 0.6"/>
 
   <!-- topic of your odometry such as VIO or LIO -->
-  <arg name="odom_topic" value="/OdomQuadruped" />
+  <arg name="odom_topic" value="/Odometry" />
 
   <!-- main algorithm params -->
   <include file="$(find ego_planner)/launch/advanced_param.xml">
