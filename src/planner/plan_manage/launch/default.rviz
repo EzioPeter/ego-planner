@@ -290,7 +290,7 @@ Visualization Manager:
       Queue Size: 2
       Transport Hint: raw
       Unreliable: false
-      Value: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 255; 253; 224
@@ -362,7 +362,7 @@ Window Geometry:
   Displays:
     collapsed: true
   Height: 739
-  Hide Left Dock: true
+  Hide Left Dock: false
   Hide Right Dock: false
   Image:
     collapsed: false
