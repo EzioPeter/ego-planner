@@ -7,6 +7,7 @@
   <arg name="camera_pose_topic"/>
   <arg name="depth_topic"/>
   <arg name="cloud_topic"/>
+  <arg name="map_frame" default="world"/>
 
   <arg name="cx"/>
   <arg name="cy"/>
@@ -105,7 +106,7 @@
     <param name="grid_map/visualization_truncate_height"   value="2.4"/>
     <param name="grid_map/show_occ_time"  value="false"/>
     <param name="grid_map/pose_type"     value="2"/>  
-    <param name="grid_map/frame_id"      value="world"/>
+    <param name="grid_map/frame_id"      value="$(arg map_frame)"/>
 
   <!-- planner manager -->
     <param name="manager/max_vel" value="$(arg max_vel)" type="double"/>

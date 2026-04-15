@@ -131,8 +131,9 @@ void cmdCallback(const ros::TimerEvent &e)
   geometry_msgs::Twist robotVelocity_BASE_frame;
 
   ros::Time time_now = ros::Time::now();
-  // double t_cur = (time_now - start_time_).toSec();
-  double t_cur = 1.3;
+  double t_cur = (time_now - start_time_).toSec();
+  if (time_forward_ > 0.0)
+    t_cur += time_forward_;
 
   Eigen::Vector3d pos(Eigen::Vector3d::Zero()), vel(Eigen::Vector3d::Zero()), acc(Eigen::Vector3d::Zero()), pos_f;
   std::pair<double, double> yaw_yawdot(0, 0);
